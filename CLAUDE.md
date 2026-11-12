@@ -1,6 +1,7 @@
 # Memoryscape — Exercise 02 (PP course)
 
 ## WHERE WE ARE (2026-11-12, v3 added)
+- **In git (12/11):** private repo https://github.com/Yael-Issacharov/memoryscape (`main`), pushed at Yael's request. `shots/` is git-ignored. Commit author = her GitHub noreply address. Push as **Yael-Issacharov** (`gh auth switch --user Yael-Issacharov`), then switch back to yaeli-byte.
 - **Three versions, all kept**, with a "גרסה 1 · 2 · 3" switch on every page (it keeps the theme; v1/v2 also keep photo/colour).
   - v1 = root (`index.html`, `colors.html`, `app.*`). v2 = `v2/` (photos 1.5×, themes swap content in place). v3 = `v3/index.html`.
 - **v3 type rule (Yael 12/11): every text on screen is one size**, `--fs:10.5px` (14px, then −25% on 12/11) with tracking `--ls:.05em` (title .08em, caps). It includes the title, chips, labels, layers, legend, timeline, popup and attribution. Measured: one computed size, 10.5px.

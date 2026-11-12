@@ -1,4 +1,5 @@
 # Memoryscape — links
+- **GitHub (private):** https://github.com/Yael-Issacharov/memoryscape
 - Switch between versions with "גרסה 1 · 2 · 3" (top right).
 - **v3 (map):** http://localhost:4512/v3/ · `?view=haifa|ta` · `?layer=t1..t4|color`
 - **v2:** http://localhost:4512/v2/ · colour view http://localhost:4512/v2/colors.html · `?theme=1..4`
