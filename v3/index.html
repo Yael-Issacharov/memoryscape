@@ -2,7 +2,7 @@
 <html lang="he">
 <head>
 <meta charset="utf-8">
-<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no">
 <meta name="robots" content="noindex, nofollow, noarchive, nosnippet, noimageindex, noai, noimageai">
 <title>Memoryscape — Exercise 02 · v3</title>
 <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css">
@@ -296,6 +296,14 @@ map.fitBounds(START, {padding:[40,40]});
 // the container can settle a frame later (fonts, viewport) — re-measure, then frame the area again
 requestAnimationFrame(()=>setTimeout(()=>{ map.invalidateSize(); map.fitBounds(START, {padding:[40,40]}); }, 60));
 addEventListener('resize', ()=>map.invalidateSize());
+// a trackpad pinch (ctrl+wheel) or Safari gesture over the UI would zoom the WHOLE PAGE and push the top out of view
+// (Yael 12/11: "the top part is cut") — route it to the map instead, so pinching anywhere zooms the map only
+document.addEventListener('wheel', e=>{
+  if(!e.ctrlKey) return;
+  e.preventDefault();
+  if(!document.getElementById('map').contains(e.target)) map.setZoom(map.getZoom() - Math.sign(e.deltaY)*.5);
+}, {passive:false});
+for(const t of ['gesturestart','gesturechange','gestureend']) document.addEventListener(t, e=>e.preventDefault(), {passive:false});
 // dock the timeline to the left of the zoom buttons, bottoms aligned
 function dockTimeline(){
   const z=document.querySelector('.leaflet-control-zoom'); if(!z) return;
