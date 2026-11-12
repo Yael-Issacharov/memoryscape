@@ -106,7 +106,13 @@ a{color:inherit}
 .timeline{position:fixed;right:var(--tl-right,64px);bottom:var(--tl-bottom,28px);z-index:1000;background:var(--panel);border:1px solid var(--ink);
   padding:5px 8px 4px;display:grid;grid-template-columns:auto 1fr auto;align-items:center;gap:3px 8px;direction:rtl;width:440px}   /* docked to the zoom buttons; wide enough for every decade as a button */
 .timeline .end{font-size:var(--fs);letter-spacing:.6px;white-space:nowrap}
-.timeline input{width:100%;accent-color:#000;direction:rtl}
+.timeline input{width:100%;direction:rtl;-webkit-appearance:none;appearance:none;background:none;height:14px;margin:0;cursor:pointer}
+/* square handle instead of the round one (Yael 12/11) — matches the square memory markers */
+.timeline input::-webkit-slider-runnable-track{height:3px;background:var(--ink)}
+.timeline input::-moz-range-track{height:3px;background:var(--ink)}
+.timeline input::-webkit-slider-thumb{-webkit-appearance:none;appearance:none;width:12px;height:12px;border-radius:0;background:var(--ink);margin-top:-4.5px;border:0}
+.timeline input::-moz-range-thumb{width:12px;height:12px;border-radius:0;background:var(--ink);border:0}
+.timeline input:focus-visible{outline:1px solid var(--ink);outline-offset:3px}
 .timeline .ticks button{padding:2px 0;color:inherit;font:inherit;letter-spacing:inherit;cursor:pointer}
 .timeline .ticks button:hover,.timeline .ticks button[aria-pressed="true"]{color:var(--ink);text-decoration:underline;text-underline-position:from-font}
 .timeline .ticks button:focus-visible{outline:1px solid var(--ink);outline-offset:2px}
