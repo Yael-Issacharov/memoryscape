@@ -144,9 +144,9 @@ a{color:inherit}
 </header>
 
 <nav class="chips" aria-label="אזורים">
-  <button class="chip" data-go="israel">ישראל</button>
+  <button class="chip" data-go="ta" aria-pressed="true">גוש דן</button>
   <button class="chip" data-go="haifa">חיפה</button>
-  <button class="chip" data-go="ta">גוש דן</button>
+  <button class="chip" data-go="israel">ישראל</button>
   <button class="chip" data-go="berlin">ברלין</button>
 </nav>
 
@@ -283,7 +283,8 @@ function setBase(bare){
     if(baseBare && map.hasLayer(baseBare)) map.removeLayer(baseBare);
   }
 }
-const START = VIEWS[q.get('view')]?.bounds || [[32.04,34.74],[32.82,35.02]];
+const START = (VIEWS[q.get('view')] || VIEWS.ta).bounds;   // opens on גוש דן (Yael 12/11)
+document.querySelectorAll('.chip').forEach(c=>c.setAttribute('aria-pressed', String(c.dataset.go===(VIEWS[q.get('view')]?q.get('view'):'ta'))));
 map.fitBounds(START, {padding:[40,40]});
 // the container can settle a frame later (fonts, viewport) — re-measure, then frame the area again
 requestAnimationFrame(()=>setTimeout(()=>{ map.invalidateSize(); map.fitBounds(START, {padding:[40,40]}); }, 60));
