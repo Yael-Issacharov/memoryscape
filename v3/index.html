@@ -67,13 +67,13 @@ a{color:inherit}
 /* bottom-left: the layers picker (Google's "שכבות") */
 .layers{position:fixed;left:24px;bottom:28px;z-index:1000;display:flex;align-items:flex-end;gap:10px;direction:ltr}
 .layers .panel{position:absolute;left:94px;bottom:0;z-index:2}   /* opens BESIDE the square (84px + 10px gap), bottoms aligned — Yael 12/11 */
-.layers.open .legend,.layers:hover .legend{opacity:0;pointer-events:none}   /* the legend steps aside while the menu is open */
+.layers.open .legend{opacity:0;pointer-events:none}   /* the legend steps aside while the menu is open */
 .legend{transition:opacity 150ms ease}
 .layer-btn{width:84px;height:84px;position:relative;border:2px solid #fff;outline:1px solid var(--ink);overflow:hidden;background:#fff}
 .layer-btn .pv{position:absolute;inset:0}
 .layer-btn span{position:absolute;left:0;right:0;bottom:0;background:rgba(0,0,0,.72);color:#fff;font-size:var(--fs);letter-spacing:.6px;padding:4px 0;text-align:center;direction:rtl}
 .panel{display:flex;gap:6px;background:var(--panel);border:1px solid var(--ink);padding:10px;opacity:0;transform:translateX(-8px);pointer-events:none;transition:opacity 200ms ease,transform 260ms var(--ease)}
-.layers.open .panel,.layers:hover .panel{opacity:1;transform:none;pointer-events:auto}
+.layers.open .panel{opacity:1;transform:none;pointer-events:auto}   /* click-only: שכבות opens AND closes it (Yael 12/11) */
 .opt{display:flex;flex-direction:column;align-items:center;gap:6px;width:68px}
 .opt .pv{width:54px;height:54px;border:1px solid var(--line);position:relative;overflow:hidden;background:#fff}
 .opt[aria-pressed="true"] .pv{outline:2px solid var(--ink);outline-offset:2px}
@@ -427,10 +427,14 @@ function setLayer(id){
   const u = new URL(location); id==='map' ? u.searchParams.delete('layer') : u.searchParams.set('layer', id); history.replaceState(null,'',u);
 }
 panel.addEventListener('click', e=>{ const b=e.target.closest('.opt'); if(b) setLayer(b.dataset.l); });
-document.getElementById('layerBtn').addEventListener('click', ()=>{
-  const open = layersEl.classList.toggle('open');
+function toggleLayers(open){
+  open = open ?? !layersEl.classList.contains('open');
+  layersEl.classList.toggle('open', open);
   document.getElementById('layerBtn').setAttribute('aria-expanded', String(open));
-});
+}
+document.getElementById('layerBtn').addEventListener('click', e=>{ e.stopPropagation(); toggleLayers(); });
+// a click anywhere else (map, chips, timeline) also closes it
+document.addEventListener('click', e=>{ if(layersEl.classList.contains('open') && !layersEl.contains(e.target)) toggleLayers(false); });
 
 /* ── chips ── */
 document.querySelectorAll('.chip').forEach(c=>c.addEventListener('click', ()=>{
