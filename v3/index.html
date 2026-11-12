@@ -5,6 +5,7 @@
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>Memoryscape — Exercise 02 · v3</title>
 <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css">
+<link rel="stylesheet" href="https://unpkg.com/maplibre-gl@4.7.1/dist/maplibre-gl.css">
 <style>
 /* Memoryscape v3 (12/11) — the memories on a map of Israel. Behaves like Google Maps: drag, zoom, place chips on top,
    a layers button bottom-left. Default layer = "white map"; themes 1–4 + colour are drawn ON the map as areas around each place.
@@ -172,6 +173,8 @@ a{color:inherit}
 </div>
 
 <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+<script src="https://unpkg.com/maplibre-gl@4.7.1/dist/maplibre-gl.js"></script>
+<script src="https://unpkg.com/@maplibre/maplibre-gl-leaflet@0.0.22/leaflet-maplibre-gl.js"></script>
 <script src="areas.js"></script>
 <script>
 /* ── data ─────────────────────────────────────────────────────────────
@@ -252,17 +255,33 @@ const TILES = {
 };
 const T = TILES[q.get('tiles')] || TILES.osm;
 document.documentElement.style.setProperty('--map-filter', T.filter);
-// themes sit on a map with NO names: Stamen Toner background (Stadia), lightened to the same white-map key
-const BARE = {url:'https://tiles.stadiamaps.com/tiles/stamen_toner_background/{z}/{x}/{y}{r}.png', filter:'contrast(.14) brightness(1.78)',
-              attr:'© Stadia Maps © Stamen Design © OpenMapTiles © OpenStreetMap'};
+// themes sit on a map with NO names: OpenFreeMap "positron" (free, no key — works on github.io, unlike Stadia which
+// answers 401 off localhost), drawn with MapLibre and with every label (symbol) layer removed, greyed to the white-map key
+const BARE = {style:'https://tiles.openfreemap.org/styles/positron', filter:'grayscale(1) contrast(1.05) brightness(1.03)',
+              attr:'© OpenFreeMap © OpenMapTiles © OpenStreetMap'};
 const map = L.map('map', {zoomControl:false, minZoom:4, maxZoom:18, zoomSnap:.25, attributionControl:true});
 L.control.zoom({position:'bottomright'}).addTo(map);
 const baseNamed = L.tileLayer(T.url, {maxZoom:19, attribution:T.attr, className:'tiles-named'}).addTo(map);
-const baseBare  = L.tileLayer(BARE.url, {maxZoom:19, attribution:BARE.attr, className:'tiles-bare'});
 document.documentElement.style.setProperty('--bare-filter', BARE.filter);
+let baseBare = null, bareReq = null, wantBare = false;
+function makeBare(){
+  return bareReq ||= fetch(BARE.style).then(r=>r.json()).then(st=>{
+    st.layers = st.layers.filter(l=>l.type!=='symbol');            // no street / place names
+    return baseBare = L.maplibreGL({style:st, interactive:false, attribution:BARE.attr});
+  });
+}
 function setBase(bare){
-  if(bare && !map.hasLayer(baseBare)){ baseBare.addTo(map); map.removeLayer(baseNamed); }
-  if(!bare && !map.hasLayer(baseNamed)){ baseNamed.addTo(map); map.removeLayer(baseBare); }
+  wantBare = bare;
+  if(bare){
+    makeBare().then(l=>{
+      if(!wantBare) return;
+      if(!map.hasLayer(l)){ l.addTo(map); l.getContainer()?.classList.add('tiles-bare'); }
+      if(map.hasLayer(baseNamed)) map.removeLayer(baseNamed);
+    }).catch(()=>{});                                                // if it fails, the named map stays
+  } else {
+    if(!map.hasLayer(baseNamed)) baseNamed.addTo(map);
+    if(baseBare && map.hasLayer(baseBare)) map.removeLayer(baseBare);
+  }
 }
 const START = VIEWS[q.get('view')]?.bounds || [[32.04,34.74],[32.82,35.02]];
 map.fitBounds(START, {padding:[40,40]});
