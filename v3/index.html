@@ -1,0 +1,463 @@
+<!doctype html>
+<html lang="he">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Memoryscape — Exercise 02 · v3</title>
+<link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css">
+<style>
+/* Memoryscape v3 (12/11) — the memories on a map of Israel. Behaves like Google Maps: drag, zoom, place chips on top,
+   a layers button bottom-left. Default layer = "white map"; themes 1–4 + colour are drawn ON the map as areas around each place.
+   v1 (../) and v2 (../v2/) are kept as they were. */
+@font-face{font-family:"Inter";src:url(../fonts/inter-latin-400.woff2) format("woff2");font-weight:400;font-display:block}
+@font-face{font-family:"Noto Sans Hebrew";src:url(../fonts/noto-sans-hebrew-400.woff2) format("woff2");font-weight:400;font-display:block;unicode-range:U+0590-05FF,U+200C-2010,U+20AA,U+25CC,U+FB1D-FB4F}
+:root{--fs:10.5px;--ls:.05em;   /* one type size for everything on screen (Yael 12/11) */
+  --bg:#f7f7f7;--ink:#000;--line:rgba(0,0,0,.2);--panel:#fff;--ease:cubic-bezier(.72,0,.18,1)}
+*{box-sizing:border-box;margin:0;padding:0}
+html,body{height:100%;background:var(--bg);overflow:hidden}
+body{font-family:"Inter","Noto Sans Hebrew",system-ui,sans-serif;color:var(--ink);-webkit-font-smoothing:antialiased}
+button{font:inherit;color:inherit;background:none;border:0;cursor:pointer}
+a{color:inherit}
+.caps{font-size:var(--fs);letter-spacing:var(--ls);text-transform:uppercase;line-height:1}
+
+#map{position:fixed;inset:0;background:#fff}
+/* the "white map": greyscale, high-key, so roads read as thin lines on white */
+.tiles-named{filter:var(--map-filter)}
+.tiles-bare{filter:var(--bare-filter)}
+.leaflet-container{font-family:inherit;background:#fff}
+.leaflet-control-attribution{font-size:var(--fs)!important;font-size:var(--fs);background:rgba(255,255,255,.75)!important}
+.leaflet-control-zoom{border:0!important;box-shadow:none!important}
+.leaflet-control-zoom a{font-size:var(--fs)!important;width:36px!important;height:36px!important;line-height:34px!important;border:1px solid var(--ink)!important;border-radius:0!important;color:var(--ink)!important;font-weight:400}
+.leaflet-control-zoom a+a{border-top:0!important}
+
+/* top-right: title + version switch (same type as the site) */
+.brand{position:fixed;top:24px;right:24px;z-index:1000;display:flex;flex-direction:column;align-items:flex-end;gap:12px;pointer-events:none}
+.brand h1{font-weight:400;font-size:var(--fs);letter-spacing:.08em;text-transform:uppercase;line-height:1.3;direction:ltr;text-align:right;background:var(--panel);padding:6px 10px 4px;pointer-events:auto}
+.brand nav{display:flex;gap:18px;direction:ltr;background:var(--panel);padding:6px 10px;pointer-events:auto}
+.brand nav a{text-decoration:none;direction:rtl}
+.brand nav a[aria-current="page"],.brand nav a:hover{text-decoration:underline;text-underline-position:from-font}
+
+/* top: place chips, like Google's category chips — they fly the map to an area */
+.chips{position:fixed;top:24px;left:24px;z-index:1000;display:flex;gap:8px;direction:rtl;flex-wrap:wrap;max-width:calc(100vw - 420px)}
+.chip{background:var(--panel);border:1px solid var(--ink);padding:8px 14px;font-size:var(--fs);letter-spacing:.6px;white-space:nowrap}
+.chip:hover,.chip[aria-pressed="true"]{background:var(--ink);color:#fff}
+
+/* memory markers: the photo itself, pinned to its place */
+/* memory markers: a small square dot at the place; hovering opens it into the photo (Yael 12/11 — at first glance you see only the layers) */
+.mem{position:absolute;left:50%;top:50%;width:10px;height:10px;transform:translate(-50%,-50%);background:var(--ink);outline:1.5px solid #fff;
+  transition:width 320ms var(--ease),height 320ms var(--ease),background-color 200ms ease;cursor:pointer}
+.mem img{width:100%;height:100%;object-fit:cover;display:block;opacity:0;transition:opacity 220ms ease}
+.mem-icon:hover .mem,.mem-icon:focus-visible .mem{width:84px;height:84px;background:#fff}
+.mem-icon:hover .mem img,.mem-icon:focus-visible .mem img{opacity:1;transition-delay:80ms}
+.mem-label{position:absolute;top:calc(100% + 6px);left:50%;transform:translateX(-50%);font-size:var(--fs);letter-spacing:var(--ls);white-space:nowrap;background:var(--panel);padding:2px 5px;direction:rtl;
+  opacity:0;pointer-events:none;transition:opacity 200ms ease}
+.mem-icon:hover .mem-label,.mem-icon:focus-visible .mem-label{opacity:1}
+.mem-icon:hover{z-index:2000!important}
+.leaflet-marker-icon.mem-icon{background:none;border:0}
+/* the place pin without a memory (מגדל שלום) */
+.dot{width:6px;height:6px;background:var(--ink);outline:1.5px solid #fff}   /* place with no memory: a smaller square */
+
+/* unplaced memories: a side tray, like a "saved" list */
+.tray{position:fixed;right:24px;top:150px;z-index:1000;background:var(--panel);border:1px solid var(--ink);padding:10px;display:flex;flex-direction:column;gap:8px;align-items:center}
+.tray .lbl{font-size:var(--fs);letter-spacing:.6px;direction:rtl;writing-mode:horizontal-tb;white-space:nowrap}
+.tray button{width:56px;height:56px;display:block}
+.tray img{width:100%;height:100%;object-fit:cover;display:block;outline:1px solid var(--line)}
+
+/* bottom-left: the layers picker (Google's "שכבות") */
+.layers{position:fixed;left:24px;bottom:28px;z-index:1000;display:flex;align-items:flex-end;gap:10px;direction:ltr}
+.layers .panel{position:absolute;left:94px;bottom:0;z-index:2}   /* opens BESIDE the square (84px + 10px gap), bottoms aligned — Yael 12/11 */
+.layers.open .legend,.layers:hover .legend{opacity:0;pointer-events:none}   /* the legend steps aside while the menu is open */
+.legend{transition:opacity 150ms ease}
+.layer-btn{width:84px;height:84px;position:relative;border:2px solid #fff;outline:1px solid var(--ink);overflow:hidden;background:#fff}
+.layer-btn .pv{position:absolute;inset:0}
+.layer-btn span{position:absolute;left:0;right:0;bottom:0;background:rgba(0,0,0,.72);color:#fff;font-size:var(--fs);letter-spacing:.6px;padding:4px 0;text-align:center;direction:rtl}
+.panel{display:flex;gap:6px;background:var(--panel);border:1px solid var(--ink);padding:10px;opacity:0;transform:translateX(-8px);pointer-events:none;transition:opacity 200ms ease,transform 260ms var(--ease)}
+.layers.open .panel,.layers:hover .panel{opacity:1;transform:none;pointer-events:auto}
+.opt{display:flex;flex-direction:column;align-items:center;gap:6px;width:68px}
+.opt .pv{width:54px;height:54px;border:1px solid var(--line);position:relative;overflow:hidden;background:#fff}
+.opt[aria-pressed="true"] .pv{outline:2px solid var(--ink);outline-offset:2px}
+.opt[aria-pressed="true"] .t{text-decoration:underline;text-underline-position:from-font}
+.opt .t{font-size:var(--fs);letter-spacing:.4px;direction:rtl;white-space:nowrap}
+.opt:focus-visible .pv,.layer-btn:focus-visible,.chip:focus-visible{outline:2px solid var(--ink);outline-offset:2px}
+
+/* preview fills (shared by the picker, the legend and the map areas' CSS twins) */
+.pv.dash,.sw.dash{background:#fff url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='13' height='12'%3E%3Crect width='6.5' height='1' fill='%23000' fill-opacity='.55'/%3E%3C/svg%3E")}
+.pv.dots,.sw.dots{background:#fff url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='7' height='7'%3E%3Ccircle cx='1' cy='1' r='.8' fill='%23000' fill-opacity='.6'/%3E%3C/svg%3E")}
+.pv.diag,.sw.diag{background:#fff url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='10' height='7.5'%3E%3Cpath d='M0 .2L5 3.8' stroke='%23000' stroke-opacity='.8' stroke-width='.8'/%3E%3C/svg%3E")}
+.pv.split{display:grid;grid-template-columns:1fr 1fr}
+.pv img{width:100%;height:100%;object-fit:cover;display:block}
+.pv.stripes{display:flex;flex-direction:column}
+.pv.stripes i{flex:1}
+.pv.map{background:#fff url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='54' height='54'%3E%3Cpath d='M0 14C18 12 30 22 54 18M10 0C14 20 8 34 16 54M34 0L40 54M0 38C20 34 34 42 54 36' fill='none' stroke='%23000' stroke-width='1.2'/%3E%3Cpath d='M0 26H54M24 0V54' stroke='%23000' stroke-opacity='.25'/%3E%3C/svg%3E")}
+
+/* legend above the picker, like the traffic legend */
+.legend{position:static;background:var(--panel);border:1px solid var(--ink);padding:10px 12px;display:none;gap:16px;direction:rtl;align-items:center;font-size:var(--fs);letter-spacing:.5px}
+.legend.on{display:flex}
+.legend .it{display:flex;align-items:center;gap:8px;white-space:nowrap}
+.sw{width:34px;height:20px;border:1px solid var(--line);display:inline-block;flex:none}
+
+/* map areas drawn by the themes */
+.area{transition:opacity 400ms ease}
+
+[hidden]{display:none!important}
+
+/* bottom centre: the timeline — past (right) to present (left), like reading Hebrew */
+.timeline{position:fixed;right:var(--tl-right,64px);bottom:var(--tl-bottom,28px);z-index:1000;background:var(--panel);border:1px solid var(--ink);
+  padding:5px 8px 4px;display:grid;grid-template-columns:auto 1fr auto;align-items:center;gap:3px 8px;direction:rtl;width:440px}   /* docked to the zoom buttons; wide enough for every decade as a button */
+.timeline .end{font-size:var(--fs);letter-spacing:.6px;white-space:nowrap}
+.timeline input{width:100%;accent-color:#000;direction:rtl}
+.timeline .ticks button{padding:2px 0;color:inherit;font:inherit;letter-spacing:inherit;cursor:pointer}
+.timeline .ticks button:hover,.timeline .ticks button[aria-pressed="true"]{color:var(--ink);text-decoration:underline;text-underline-position:from-font}
+.timeline .ticks button:focus-visible{outline:1px solid var(--ink);outline-offset:2px}
+.timeline .ticks{grid-column:2;display:flex;justify-content:space-between;padding:0 2px;font-size:var(--fs);letter-spacing:.4px;color:rgba(0,0,0,.55);font-variant-numeric:tabular-nums;direction:rtl}
+.mem-icon{transition:opacity 400ms ease}
+.mem-icon.later{opacity:0;pointer-events:none}
+
+/* fullscreen photo */
+#lb{position:fixed;inset:0;z-index:2000;background:var(--bg);display:grid;place-items:center;opacity:0;pointer-events:none;transition:opacity 400ms ease}
+#lb.on{opacity:1;pointer-events:auto}
+#lb img{max-width:calc(100vw - 192px);max-height:calc(100vh - 300px);margin:0 auto;display:block;transform:scale(.92);transition:transform 600ms var(--ease)}
+#lb.on img{transform:none}
+#lb{grid-template-rows:auto auto;align-content:center;gap:22px}
+#lb .cap{max-width:62ch;margin:0 auto;padding:0 24px;text-align:center;direction:rtl;display:flex;flex-direction:column;gap:8px}
+#lb .cap .where{font-size:var(--fs);letter-spacing:var(--ls)}
+#lb .cap .what{font-size:var(--fs);line-height:1.65;text-wrap:balance}
+#lb .x{position:absolute;top:32px;left:32px;width:32px;height:32px;display:grid;place-items:center}
+
+@media (max-width:760px){
+  .brand h1{font-size:var(--fs)}
+  .chips{top:auto;bottom:130px;left:16px;max-width:calc(100vw - 32px)}
+  .tray{top:auto;bottom:28px;right:16px;transform:none;flex-direction:row}
+  .layers{left:16px}
+  .timeline{right:64px;bottom:28px;width:min(440px,calc(100vw - 96px))}
+}
+@media (prefers-reduced-motion:reduce){*{transition:none!important}}
+</style>
+</head>
+<body>
+<div id="map"></div>
+
+<header class="brand">
+  <h1>exercise 02<br>memoryscape</h1>
+  <nav class="caps" aria-label="גרסה"><a href="../index.html">גרסה 1</a><a href="../v2/index.html">גרסה 2</a><a href="index.html" aria-current="page">גרסה 3</a></nav>
+</header>
+
+<nav class="chips" aria-label="אזורים">
+  <button class="chip" data-go="israel">ישראל</button>
+  <button class="chip" data-go="haifa">חיפה</button>
+  <button class="chip" data-go="ta">גוש דן</button>
+  <button class="chip" data-go="berlin">ברלין</button>
+</nav>
+
+<aside class="tray" aria-label="זיכרונות בלי מקום"><span class="lbl">בלי מקום</span></aside>
+
+
+<div class="timeline" role="group" aria-label="ציר זמן">
+  <span class="end">עבר</span>
+  <input type="range" id="year" step="1" aria-label="שנה">
+  <span class="end">הווה</span>
+  <div class="ticks" id="ticks"></div>
+</div>
+
+<div class="layers" id="layers">
+  <button class="layer-btn" id="layerBtn" aria-label="שכבות" aria-expanded="false"><div class="pv" id="layerBtnPv"></div><span>שכבות</span></button>
+  <div class="panel" id="panel" role="group" aria-label="שכבות"></div>
+  <div class="legend" id="legend"></div>
+</div>
+
+<div id="lb" role="dialog" aria-modal="true" aria-label="תמונה">
+  <button class="x" id="lbx" aria-label="סגירה"><svg viewBox="0 0 22 22" width="22" height="22" fill="none" stroke="#000" stroke-width="1.4"><path d="M2 2L20 20M20 2L2 20"/></svg></button>
+  <img id="lbimg" alt="">
+  <div class="cap" id="lbcap"><span class="where" id="lbwhere"></span><p class="what" id="lbwhat"></p></div>
+</div>
+
+<script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+<script src="areas.js"></script>
+<script>
+/* ── data ─────────────────────────────────────────────────────────────
+   Places: from the boards (Figma 2:2) + Yael's questionnaire. Coordinates are approximate street-level points — adjust here.
+   Memories: thumb = the 700px web copy (m01 pre-rotated); meta = hidden text (never shown). */
+const PLACES = {   // geocoded from the addresses (OSM/Nominatim, 12/11); each fills the named area it sits in (areas.js)
+  'hatachtit':           {name:'התחתית',          ll:[32.06708,34.78175], city:'ta', area:'tlv-center'},     // the café, לינקולן 9
+  'wadi-shiach-orchard': {name:'בוסתן ואדי שיח',  ll:[32.80121,34.97344], city:'haifa', area:'haifa'},  // נחל שיח, כרמליה
+  'yarkon-park':         {name:'פארק הירקון',     ll:[32.10303,34.81673], city:'ta', area:'tlv-east'},
+  'klay-8-givatayim':    {name:'קלעי 8 גבעתיים',  ll:[32.07788,34.80850], city:'ta', area:'givatayim'},
+  'yaavetz-2a':          {name:'יעבץ 2א',         ll:[32.06540,34.76800], city:'ta', area:'tlv-center'},
+  'matalon-70':          {name:'מטלון 70',        ll:[32.05785,34.77532], city:'ta', area:'tlv-south'},
+  'shalom-tower':        {name:'מגדל שלום',       ll:[32.06424,34.76970], city:'ta', empty:true, area:'tlv-center'},
+  // added 12/11 from Yael's answers — no board photo yet, so theme 3 leaves these areas empty
+  'hatikva':             {name:'שכונת התקווה',    ll:[32.05200,34.79500], city:'ta', noPhoto:true, area:'tlv-east'},
+  'ibn-gabirol':         {name:'אבן גבירול',      ll:[32.08300,34.78180], city:'ta', noPhoto:true, area:'tlv-center'},
+  'ramat-gan':           {name:'רמת גן',          ll:[32.06800,34.82400], city:'ta', noPhoto:true, area:'ramat-gan'},
+  'berlin':              {name:'ברלין',           ll:[52.52000,13.40500], city:'berlin', noPhoto:true, area:'berlin'},
+};
+const MEM = {
+  m01:{place:'ramat-gan',           mat:null},
+  m02:{place:'berlin',              mat:'gold-tile'},
+  m03:{place:'wadi-shiach-orchard', mat:null},
+  m04:{place:'hatikva',             mat:'sidewalk'},
+  m05:{place:'yaavetz-2a',          mat:'painted-floor'},
+  m06:{place:'yarkon-park',         mat:'grass'},
+  m07:{place:'ibn-gabirol',         mat:'sesame-floor'},
+  m08:{place:'matalon-70',          mat:'sesame-floor'},
+  m09:{place:'klay-8-givatayim',    mat:null},
+  m10:{place:'hatachtit',           mat:'asphalt'},
+};
+/* YEAR — the DECADE each memory happened in (Yael, 12/11). The slider steps by decade. null = unknown (always shown). */
+const YEAR = {m01:2000, m02:2020, m03:1980, m04:1960, m05:2020, m06:2020, m07:1990, m08:2020, m09:2020, m10:2020};
+/* META — what is seen in each photo (written 12/11 at Yael's request). Shown in the fullscreen popup, under place + decade. */
+const META = {
+  m01:'סבתא בסוודר בז׳ עם צווארון אדום רוכנת אל ילדה במשקפיים. שתיהן מציירות יחד בצבעי מים, ליד שולחן מלא בדפים, מכחולים ופלטות. התמונה עצמה ממוסגרת במסגרת ירוקה.',
+  m02:'אישה במעיל שחור ארוך עומדת מול קיר ירקרק-אפור, ליד דלת כחולה עם זכוכית. לרגליה מדרכה של אבנים קטנות.',
+  m03:'גבר בחולצה מכופתרת רוכן בין סלעים ואבנים ועובד באדמה, ליד קורות עץ, על רקע קיר אבן נמוך.',
+  m04:'צילום ישן ודהוי בגווני חום: סבא עם זקן לבן ובחליפה כהה עומד מאחורי ילד קטן בכובע ועניבת פרפר.',
+  m05:'כלב לבן-חום שוכב על שמיכה אפורה, על רצפה מצוירת בגוונים חמים, ליד דלת עץ כהה בקצה המסדרון.',
+  m06:'אישה במעיל כהה הולכת על דשא ירוק עם כלב לבן-חום ברצועה אדומה. מאחוריהם עצים ושמיים של סוף היום.',
+  m07:'אבא בסוודר כהה מניף תינוקת בבגד לבן וגרביים אדומות אל התקרה, בסלון עם מנורות תלויות ותמונה צבעונית על הקיר. שני צילומים של אותו רגע, אחד מעל השני.',
+  m08:'מישהו ישן מכורבל בתוך מיטת כלב עגולה ומחבק כלב לבן-חום, על רצפת שומשום בהירה.',
+  m09:'גבר מבוגר עם זקן לבן, בחולצה מפוספסת, יושב בסלון בין אנשים, מול קיר שלם של מדפי ספרים.',
+  m10:'אמא בחולצת פסים מחזיקה תינוק עטוף בסווטשירט אפור, ברחוב, ליד אופנועים חונים.',
+};
+const T1 = {m06:'dash',m07:'dash',m08:'dash',m10:'dash'};                                 // הורים וילדים; others נכדים וסבים (dots)
+const T2 = {m01:['dash'],m03:['dash'],m04:['dash'],m07:['dash'],m02:['diag'],m05:['diag'],m08:['diag'],m10:['diag'],m06:['dash','diag'],m09:['dash','diag']};
+const MAT_NAME = {'gold-tile':'מרצפת זהב','sidewalk':'מדרכה','painted-floor':'רצפה מצויירת','grass':'דשא','sesame-floor':'רצפת שומשום','asphalt':'אספלט'};
+const thumb = id => `../questionnaire/img/mem/${id}.jpg`;
+const placeImg = id => `../boards/web/places/${id}.jpg`;
+const matImg = id => `../boards/web/materials/${id}.jpg`;
+
+const LAYERS = [
+  {id:'map',   label:'מפה לבנה'},
+  {id:'t1',    label:'תמה 1'},
+  {id:'t2',    label:'תמה 2'},
+  {id:'t3',    label:'תמה 3'},
+  {id:'t4',    label:'תמה 4'},
+  {id:'color', label:'צבע'},
+];
+const VIEWS = {
+  israel:{bounds:[[29.45,34.2],[33.35,35.95]]},
+  haifa: {bounds:[[32.74,34.95],[32.84,35.06]]},
+  ta:    {bounds:[[32.030,34.740],[32.150,34.860]]},
+  berlin:{bounds:[[52.34,13.09],[52.68,13.76]]},
+};
+
+/* ── the map ── */
+const q = new URLSearchParams(location.search);
+const TILES = {
+  // OSM standard (Hebrew names in Israel), turned into a white line map by the CSS filter
+  osm:  {url:'https://tile.openstreetmap.org/{z}/{x}/{y}.png', filter:'grayscale(1) contrast(1.35) brightness(1.12)',
+         attr:'© OpenStreetMap'},
+  // Stamen Toner Lite via Stadia: black-and-white by design (English labels)
+  toner:{url:'https://tiles.stadiamaps.com/tiles/stamen_toner_lite/{z}/{x}/{y}{r}.png', filter:'none',
+         attr:'© Stadia Maps © Stamen Design © OpenMapTiles © OpenStreetMap'},
+};
+const T = TILES[q.get('tiles')] || TILES.osm;
+document.documentElement.style.setProperty('--map-filter', T.filter);
+// themes sit on a map with NO names: Stamen Toner background (Stadia), lightened to the same white-map key
+const BARE = {url:'https://tiles.stadiamaps.com/tiles/stamen_toner_background/{z}/{x}/{y}{r}.png', filter:'contrast(.14) brightness(1.78)',
+              attr:'© Stadia Maps © Stamen Design © OpenMapTiles © OpenStreetMap'};
+const map = L.map('map', {zoomControl:false, minZoom:4, maxZoom:18, zoomSnap:.25, attributionControl:true});
+L.control.zoom({position:'bottomright'}).addTo(map);
+const baseNamed = L.tileLayer(T.url, {maxZoom:19, attribution:T.attr, className:'tiles-named'}).addTo(map);
+const baseBare  = L.tileLayer(BARE.url, {maxZoom:19, attribution:BARE.attr, className:'tiles-bare'});
+document.documentElement.style.setProperty('--bare-filter', BARE.filter);
+function setBase(bare){
+  if(bare && !map.hasLayer(baseBare)){ baseBare.addTo(map); map.removeLayer(baseNamed); }
+  if(!bare && !map.hasLayer(baseNamed)){ baseNamed.addTo(map); map.removeLayer(baseBare); }
+}
+const START = VIEWS[q.get('view')]?.bounds || [[32.04,34.74],[32.82,35.02]];
+map.fitBounds(START, {padding:[40,40]});
+// the container can settle a frame later (fonts, viewport) — re-measure, then frame the area again
+requestAnimationFrame(()=>setTimeout(()=>{ map.invalidateSize(); map.fitBounds(START, {padding:[40,40]}); }, 60));
+addEventListener('resize', ()=>map.invalidateSize());
+// dock the timeline to the left of the zoom buttons, bottoms aligned
+function dockTimeline(){
+  const z=document.querySelector('.leaflet-control-zoom'); if(!z) return;
+  const r=z.getBoundingClientRect(), root=document.documentElement.style;
+  root.setProperty('--tl-right', (innerWidth - r.left + 8)+'px');
+  root.setProperty('--tl-bottom', (innerHeight - r.bottom)+'px');
+}
+addEventListener('resize', dockTimeline); requestAnimationFrame(dockTimeline);
+
+/* SVG patterns for the theme areas live in the overlay renderer's <defs> */
+const renderer = L.svg({padding:.6}).addTo(map);
+L.circle([0,0],{radius:1, renderer}).addTo(map).remove();       // forces the <svg> to exist
+const svg = renderer._container, NS='http://www.w3.org/2000/svg';
+const defs = document.createElementNS(NS,'defs'); svg.prepend(defs);
+function def(html){ defs.insertAdjacentHTML('beforeend', html); }
+def(`<pattern id="p-dash" width="26" height="24" patternUnits="userSpaceOnUse"><rect width="26" height="24" fill="#fff"/><rect width="13" height="1.2" fill="#000" fill-opacity=".6"/></pattern>`);
+def(`<pattern id="p-dots" width="13" height="12" patternUnits="userSpaceOnUse"><rect width="13" height="12" fill="#fff"/><circle cx="1.5" cy="1.5" r="1" fill="#000" fill-opacity=".65"/></pattern>`);
+def(`<pattern id="p-dash-t" width="26" height="24" patternUnits="userSpaceOnUse"><rect width="13" height="1.2" fill="#000" fill-opacity=".7"/></pattern>`);
+def(`<pattern id="p-diag-t" width="21" height="15" patternUnits="userSpaceOnUse"><path d="M0 .3L10.5 7.7" stroke="#000" stroke-opacity=".85" stroke-width="1"/></pattern>`);
+const imgPattern = (id, href) => def(`<pattern id="${id}" patternUnits="objectBoundingBox" patternContentUnits="objectBoundingBox" width="1" height="1"><image href="${href}" width="1" height="1" preserveAspectRatio="xMidYMid slice"/></pattern>`);
+Object.keys(PLACES).filter(p=>!PLACES[p].noPhoto).forEach(p=>imgPattern('pl-'+p, placeImg(p)));
+Object.keys(MAT_NAME).forEach(m=>imgPattern('mt-'+m, matImg(m)));
+
+/* ── markers: each memory's photo at its place ── */
+let PAL = {};
+const markers = [];
+for(const [id,m] of Object.entries(MEM)){
+  if(!m.place) continue;
+  const P = PLACES[m.place];
+  const icon = L.divIcon({className:'mem-icon', iconSize:[12,12], iconAnchor:[6,6],
+    html:`<div class="mem"><img src="${thumb(id)}" alt=""><span class="mem-label">${P.name}</span></div>`});
+  const mk = L.marker(P.ll, {icon, keyboard:true, title:P.name, riseOnHover:true, zIndexOffset:500}).addTo(map);
+  mk.on('click', ()=>openPhoto(id, P.name));
+  mk.memId = id;
+  markers.push(mk);
+}
+for(const [k,P] of Object.entries(PLACES)) if(P.empty){
+  L.marker(P.ll, {icon:L.divIcon({className:'mem-icon', iconSize:[8,8], html:`<div class="dot"></div><span class="mem-label" style="top:12px">${P.name}</span>`})}).addTo(map);
+}
+/* unplaced memories → the tray */
+const tray = document.querySelector('.tray');
+if(Object.values(MEM).every(m=>m.place)) tray.hidden = true;
+for(const [id,m] of Object.entries(MEM)) if(!m.place){
+  const b=document.createElement('button'); b.setAttribute('aria-label','זיכרון בלי מקום');
+  b.innerHTML=`<img src="${thumb(id)}" alt="">`; b.onclick=()=>openPhoto(id,'בלי מקום'); tray.appendChild(b);
+}
+
+/* ── theme areas: every memory fills its whole CITY (all of Tel Aviv is one area). Memories that share a city
+      STACK — each adds its own layer, so a city with more memories reads denser (cumulative effect, Yael 12/11). ── */
+const AREA_OF = Object.fromEntries(AREAS.features.map(f=>[f.properties.area, f]));
+let areaGroup = L.layerGroup().addTo(map);
+const STACK_ALPHA = .5;   // each photo / colour layer adds half-opacity: 1 memory = 50%, 2 = 75%, 6 ≈ 98%
+function area(aid, fill, opts={}){
+  return L.geoJSON(AREA_OF[aid], {renderer, interactive:false,
+    style:Object.assign({stroke:false, fillOpacity:1, className:'area', fillColor:fill}, opts)});
+}
+function outline(aid){ return L.geoJSON(AREA_OF[aid], {renderer, interactive:false, style:{color:'#000', opacity:.45, weight:.6, fill:false}}); }
+// a line pattern shifted by n steps, so stacked memories of the same kind don't sit exactly on top of each other
+const PAT = {dash:{w:26,h:24,body:'<rect width="13" height="1.2" fill="#000" fill-opacity=".7"/>'},
+             dots:{w:13,h:12,body:'<circle cx="1.5" cy="1.5" r="1" fill="#000" fill-opacity=".7"/>'},
+             diag:{w:21,h:15,body:'<path d="M0 .3L10.5 7.7" stroke="#000" stroke-opacity=".85" stroke-width="1"/>'}};
+function shifted(kind, n){
+  const id=`sp-${kind}-${n}`; if(document.getElementById(id)) return id;
+  const P=PAT[kind], dx=(n*7)%P.w, dy=(n*5)%P.h;
+  def(`<pattern id="${id}" width="${P.w}" height="${P.h}" patternUnits="userSpaceOnUse" patternTransform="translate(${dx} ${dy})">${P.body}</pattern>`);
+  return id;
+}
+function memPattern(mid){ const id='mm-'+mid; if(!document.getElementById(id)) imgPattern(id, thumb(mid)); return id; }
+function palPattern(mid){   // the memory's 10 colours as horizontal bands across the area, each band's height ∝ its share
+  const id='pal-'+mid; if(document.getElementById(id)) return id;
+  let y=0; const bands = PAL[mid].map(c=>{ const r=`<rect y="${y}" width="1" height="${c.share+.002}" fill="${c.hex}"/>`; y+=c.share; return r; }).join('');
+  def(`<pattern id="${id}" patternUnits="objectBoundingBox" patternContentUnits="objectBoundingBox" width="1" height="1">${bands}</pattern>`);
+  return id;
+}
+function drawLayer(id){
+  areaGroup.clearLayers();
+  if(id==='map') return;
+  // memories per city, in time order (oldest at the bottom of the stack)
+  const byArea = {};
+  for(const [mid,m] of Object.entries(MEM)){
+    if(!m.place || !inTime(mid)) continue;
+    const aid = PLACES[m.place].area; if(!AREA_OF[aid]) continue;
+    (byArea[aid] ||= []).push(mid);
+  }
+  // Tel Aviv (without Jaffa) turns white as soon as one of its regions holds a memory; the regions carry the fill
+  if(Object.keys(byArea).some(a=>a.startsWith('tlv-'))){
+    areaGroup.addLayer(area('tel-aviv', '#fff', {fillOpacity:1}));
+    areaGroup.addLayer(outline('tel-aviv'));
+  }
+  for(const [aid, mids] of Object.entries(byArea)){
+    mids.sort((a,b)=>(YEAR[a]??0)-(YEAR[b]??0));
+    if(id==='t1' || id==='t2') areaGroup.addLayer(area(aid, '#fff', {fillOpacity:.85}));     // paper under the patterns
+    const seen = {};
+    for(const mid of mids){
+      const m = MEM[mid];
+      if(id==='t1'){ const k=T1[mid]||'dots'; areaGroup.addLayer(area(aid, `url(#${shifted(k, seen[k]=(seen[k]??-1)+1)})`)); }
+      if(id==='t2') for(const k of T2[mid]) areaGroup.addLayer(area(aid, `url(#${shifted(k, seen[k]=(seen[k]??-1)+1)})`));
+      // theme 3: the place photo; a place with no board photo uses the memory's own photo, so every memory shows (Yael 12/11)
+      if(id==='t3') areaGroup.addLayer(area(aid, PLACES[m.place].noPhoto ? `url(#${memPattern(mid)})` : `url(#pl-${m.place})`, {fillOpacity:STACK_ALPHA}));
+      // theme 4: the material photo; a memory with no material uses its own photo (Yael 12/11)
+      if(id==='t4') areaGroup.addLayer(area(aid, m.mat ? `url(#mt-${m.mat})` : `url(#${memPattern(mid)})`, {fillOpacity:STACK_ALPHA}));
+      if(id==='color' && PAL[mid]) areaGroup.addLayer(area(aid, `url(#${palPattern(mid)})`, {fillOpacity:STACK_ALPHA}));
+    }
+    areaGroup.addLayer(outline(aid));
+  }
+}
+
+/* ── layers picker + legend ── */
+function previewHTML(id){
+  if(id==='map') return `<div class="pv map"></div>`;
+  if(id==='t1')  return `<div class="pv split"><div class="pv dash" style="position:static;border:0"></div><div class="pv dots" style="position:static;border:0"></div></div>`;
+  if(id==='t2')  return `<div class="pv split"><div class="pv dash" style="position:static;border:0"></div><div class="pv diag" style="position:static;border:0"></div></div>`;
+  if(id==='t3')  return `<div class="pv"><img src="${placeImg('yarkon-park')}" alt=""></div>`;
+  if(id==='t4')  return `<div class="pv"><img src="${matImg('painted-floor')}" alt=""></div>`;
+  if(id==='color') return `<div class="pv stripes">${(PAL.m05||[]).map(c=>`<i style="background:${c.hex};flex:${c.share}"></i>`).join('')}</div>`;
+}
+const LEGENDS = {   // only layers with a real key get a legend (Yael 12/11)
+  t1:`<span class="it"><span class="sw dash"></span>הורים וילדים</span><span class="it"><span class="sw dots"></span>נכדים וסבים</span>`,
+  t2:`<span class="it"><span class="sw dash"></span>יפתח</span><span class="it"><span class="sw diag"></span>יעל</span>`,
+};
+const panel = document.getElementById('panel'), layersEl = document.getElementById('layers'), legend = document.getElementById('legend');
+let current = 'map';
+function renderPanel(){
+  panel.innerHTML = LAYERS.map(l=>`<button class="opt" data-l="${l.id}" aria-pressed="${l.id===current}">${previewHTML(l.id)}<span class="t">${l.label}</span></button>`).join('');
+}
+function setLayer(id){
+  current = id;
+  setBase(id!=='map');          // street names only on the plain white map
+  drawLayer(id);
+  renderPanel();
+  // the big button previews the layer you'd go back to (like Google's map/satellite tile)
+  // the big button shows the active layer's preview (on the white map it shows a theme, inviting the switch)
+  const old = document.getElementById('layerBtnPv');
+  old.insertAdjacentHTML('afterend', previewHTML(id==='map'?'t3':id)); old.remove();
+  old.nextElementSibling; document.querySelector('#layerBtn > .pv').id = 'layerBtnPv';
+  legend.innerHTML = LEGENDS[id]||''; legend.classList.toggle('on', !!LEGENDS[id]);
+  const u = new URL(location); id==='map' ? u.searchParams.delete('layer') : u.searchParams.set('layer', id); history.replaceState(null,'',u);
+}
+panel.addEventListener('click', e=>{ const b=e.target.closest('.opt'); if(b) setLayer(b.dataset.l); });
+document.getElementById('layerBtn').addEventListener('click', ()=>{
+  const open = layersEl.classList.toggle('open');
+  document.getElementById('layerBtn').setAttribute('aria-expanded', String(open));
+});
+
+/* ── chips ── */
+document.querySelectorAll('.chip').forEach(c=>c.addEventListener('click', ()=>{
+  document.querySelectorAll('.chip').forEach(x=>x.setAttribute('aria-pressed', String(x===c)));
+  map.flyToBounds(VIEWS[c.dataset.go].bounds, {padding:[60,60], duration:1.2});
+}));
+
+/* ── fullscreen ── */
+const lb=document.getElementById('lb'), lbimg=document.getElementById('lbimg');
+function openPhoto(id, place){
+  lbimg.src = thumb(id);
+  document.getElementById('lbwhere').textContent = [place, YEAR[id]!=null ? decade(YEAR[id]) : ''].filter(Boolean).join(' · ');
+  document.getElementById('lbwhat').textContent = META[id] || '';
+  lb.classList.add('on'); document.getElementById('lbx').focus();
+}
+function closePhoto(){ lb.classList.remove('on'); }
+document.getElementById('lbx').onclick = closePhoto;
+addEventListener('keydown', e=>{ if(e.key==='Escape') { closePhoto(); layersEl.classList.remove('open'); } });
+
+/* ── timeline ── */
+const known = Object.values(YEAR).filter(y=>y!=null);
+const FROM = known.length ? Math.min(...known) : 1960, TO = known.length ? Math.max(...known) : 2020;
+const yr = document.getElementById('year');
+yr.min = FROM; yr.max = TO; yr.step = 10; yr.value = TO;
+const decade = y => y>=2000 ? `שנות ה־${y}` : `שנות ה־${String(y).slice(2)}`;
+const count = y => Object.values(YEAR).filter(v=>v===y).length;
+// one tick per decade; the number under it = how many memories are from that decade
+// one clickable tick per decade (Yael 12/11) — click jumps the slider there
+const ticks = document.getElementById('ticks');
+ticks.innerHTML = Array.from({length:(TO-FROM)/10+1},(_,i)=>{ const y=FROM+i*10; return `<button type="button" data-y="${y}" aria-pressed="false" aria-label="${decade(y)}">${y>=2000?y:"'"+String(y).slice(2)}</button>`; }).join('');
+ticks.addEventListener('click', e=>{ const b=e.target.closest('button'); if(!b) return; yr.value=b.dataset.y; applyTime(); });
+function inTime(mid){ return YEAR[mid]==null || YEAR[mid] <= +yr.value; }
+function applyTime(){
+  yr.setAttribute('aria-valuetext', decade(+yr.value));
+  ticks.querySelectorAll('button').forEach(b=>b.setAttribute('aria-pressed', String(+b.dataset.y===+yr.value)));
+  for(const mk of markers) mk.getElement()?.classList.toggle('later', !inTime(mk.memId));
+  drawLayer(current);
+}
+yr.addEventListener('input', applyTime);
+
+/* ── start: palettes, then the requested layer (?layer= or v1/v2's ?theme=n) ── */
+fetch('../palettes.json').then(r=>r.json()).then(p=>{ PAL=p; }).catch(()=>{}).finally(()=>{
+  const fromTheme = {1:'t1',2:'t2',3:'t3',4:'t4'}[q.get('theme')];
+  setLayer(LAYERS.some(l=>l.id===q.get('layer')) ? q.get('layer') : (fromTheme||'map'));
+  applyTime();
+});
+</script>
+</body>
+</html>

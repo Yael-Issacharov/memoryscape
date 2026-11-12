@@ -1,0 +1,124 @@
+/* Figma file LqkIx4BtVggzKCIur4NDsg — frames 1:5 (default) · 1:61 (theme 1) · 1:26 (theme 2). Canvas 1440×838. */
+@font-face{font-family:"Inter";src:url(fonts/inter-latin-400.woff2) format("woff2");font-weight:400;font-display:block}
+@font-face{font-family:"Noto Sans Hebrew";src:url(fonts/noto-sans-hebrew-400.woff2) format("woff2");font-weight:400;font-display:block;unicode-range:U+0590-05FF,U+200C-2010,U+20AA,U+25CC,U+FB1D-FB4F}
+@property --x { syntax:'<length>'; inherits:true; initial-value:0px }
+@property --y { syntax:'<length>'; inherits:true; initial-value:0px }
+@property --w { syntax:'<length>'; inherits:true; initial-value:0px }
+@property --h { syntax:'<length>'; inherits:true; initial-value:0px }
+
+:root{
+  --bg:#f7f7f7;
+  --ink:#000;
+  --ease:cubic-bezier(.72,0,.18,1);
+  --dur:1100ms;
+}
+*{box-sizing:border-box;margin:0;padding:0}
+html,body{height:100%;background:var(--bg);overflow:hidden}
+body{font-family:"Inter","Noto Sans Hebrew",system-ui,sans-serif;color:var(--ink);-webkit-font-smoothing:antialiased}
+button{font:inherit;color:inherit;background:none;border:0;cursor:pointer}
+
+#stage{position:absolute;left:0;top:0;width:1440px;height:838px;overflow:hidden;transform-origin:0 0;direction:ltr}
+
+/* ── type ── */
+.title{position:absolute;left:52px;top:52px;width:870px;display:flex;flex-direction:column;gap:27px;
+  font-size:102.4px;line-height:102px;letter-spacing:var(--ls,7.2px);text-transform:uppercase;text-align:right;white-space:pre}
+.title .l1{letter-spacing:7.4px;word-spacing:.6px;margin-left:-4px}
+.title .l2{letter-spacing:7.6px}
+/* Figma tracking is 8.192px; Google's Inter sets ~1.6% wider than Figma's, so tracking is tuned to land the ink on the frame's (measured) */
+.year{position:absolute;right:52px;top:52px;font-size:16px;letter-spacing:1.28px;line-height:normal}
+.small{font-size:16px;letter-spacing:1.28px;line-height:normal;text-transform:uppercase;white-space:nowrap}
+
+/* ── theme nav (Frame 10: x1012 y767, gap 57.6) ── */
+.themes{position:absolute;left:1012px;top:767px;display:flex;gap:57.6px;align-items:center;direction:ltr}
+.themes button{direction:rtl;padding:0;text-align:center;font-size:16px;letter-spacing:1.28px;line-height:normal;text-transform:uppercase;white-space:nowrap;text-underline-position:from-font}
+.themes button[aria-pressed="true"]{text-decoration:underline}
+.themes button[aria-disabled="true"]{cursor:default}
+
+/* ── background patterns (Figma pattern fills, reconstructed; periods measured off the frame render) ── */
+.pat{position:absolute;opacity:0;transition:opacity 700ms ease;pointer-events:none}
+.pat.on{opacity:1;transition-delay:250ms}
+.dash{background-image:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='26' height='24'%3E%3Crect width='13' height='1' fill='%23000' fill-opacity='.45'/%3E%3C/svg%3E");background-size:26px 24px}
+.diag{background-image:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='21' height='15'%3E%3Cpath d='M0 .3L10.5 7.7' stroke='%23000' stroke-opacity='.8' stroke-width='1'/%3E%3C/svg%3E");background-size:21px 15px}
+/* theme 1 (revised 08/11 per Yael: every photo stays on screen — parents & children on one side, other relationships on the other) */
+#pat-t1a{left:748px;top:154px;width:640px;height:588px;background-position:0 -1px}   /* הורים וילדים — the Figma dash */
+#pat-t1b{left:52px;top:154px;width:640px;height:588px;background-position:6px 5px} /* מערכות יחסים אחרות — dot grid */
+.dots{background-image:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='13' height='12'%3E%3Ccircle cx='1' cy='1' r='.9' fill='%23000' fill-opacity='.5'/%3E%3C/svg%3E");background-size:13px 12px}
+.sw.dots{background-size:6.5px 6px;background-position:2px 2px}
+#pat-t2a{left:52px;top:154px;width:870px;height:488px;background-position:0 -1px}            /* 1:27 */
+#pat-t2b{left:546px;top:267px;width:842px;height:472px;background-position:16px 7px}   /* 1:28 */
+
+/* ── legend (Frame 15) ── */
+.legend{position:absolute;display:flex;align-items:center;opacity:0;transition:opacity 600ms ease;pointer-events:none}
+.legend.on{opacity:1;transition-delay:400ms}
+.legend .it{display:flex;gap:16px;align-items:flex-end}
+.sw{width:43.5px;height:25px;border:.5px solid rgba(0,0,0,.2);flex:none}
+.sw.dash{background-size:8.667px 8px;background-position:0 1px}
+.sw.diag{background-size:10.5px 7.5px;background-position:2px 1px}
+#legend-t1{left:35px;top:764px;gap:24px}
+#legend-t1 .sw{background-color:#fff}
+#legend-t2{left:52px;top:752px;gap:24px}
+#legend-t2 .it:last-child{align-items:center}
+
+/* ── image cards ── */
+.card{position:absolute;left:var(--x);top:var(--y);width:var(--w);height:var(--h);
+  transition:--x var(--dur) var(--ease),--y var(--dur) var(--ease),--w var(--dur) var(--ease),--h var(--dur) var(--ease),
+             opacity 600ms ease,scale 900ms var(--ease);
+  will-change:transform}
+.card.off{opacity:0;scale:.85;pointer-events:none}
+.frame{position:absolute;inset:0;overflow:hidden;background:var(--fill,transparent)}
+.rot{position:absolute;left:50%;top:50%;width:var(--h);height:var(--w);transform:translate(-50%,-50%) rotate(-90deg);overflow:hidden}
+.frame img{position:absolute;max-width:none;display:block;user-select:none;-webkit-user-drag:none}
+.frame img.cover{inset:0;width:100%;height:100%;object-fit:cover}
+
+.open{position:absolute;top:6px;right:6px;width:28px;height:28px;display:grid;place-items:center;
+  opacity:0;transform:translate(-4px,4px);transition:opacity 220ms ease,transform 260ms var(--ease)}
+.open svg{width:16px;height:16px;filter:drop-shadow(0 0 3px rgba(0,0,0,.35))}
+.card:hover .open,.open:focus-visible{opacity:1;transform:none}
+.open:focus-visible{outline:1px solid #fff;outline-offset:-2px}
+
+/* ── expanded view ── */
+#lb{position:fixed;inset:0;z-index:10;background:var(--bg);opacity:0;pointer-events:none;transition:opacity 500ms ease}
+#lb.on{opacity:1;pointer-events:auto}
+.fly{position:fixed;z-index:11;left:var(--x);top:var(--y);width:var(--w);height:var(--h);
+  transition:--x 900ms var(--ease),--y 900ms var(--ease),--w 900ms var(--ease),--h 900ms var(--ease)}
+.fly .frame img{transition:left 900ms var(--ease),top 900ms var(--ease),width 900ms var(--ease),height 900ms var(--ease)}
+.fly.full .frame img{left:0!important;top:0!important;width:100%!important;height:100%!important}
+#close{position:fixed;z-index:12;top:40px;left:40px;width:32px;height:32px;display:grid;place-items:center;
+  opacity:0;pointer-events:none;transition:opacity 300ms ease}
+#close.on{opacity:1;pointer-events:auto;transition-delay:500ms}
+#close svg{width:22px;height:22px}
+
+@media (prefers-reduced-motion:reduce){
+  :root{--dur:1ms}
+  .fly,.fly .frame img{transition-duration:1ms}
+}
+
+/* ── colour view (colors.html): each photo is replaced by its 10-colour palette, bands sized by share ── */
+.frame.swatch{display:flex;flex-direction:column;background:transparent}
+.swatch i{display:flex;align-items:center;justify-content:flex-end;min-height:0;padding:0 10px;font-style:normal;overflow:hidden}
+.swatch i span{font-size:12px;letter-spacing:1px;text-transform:uppercase;font-variant-numeric:tabular-nums;opacity:0;transition:opacity 300ms ease;white-space:nowrap}
+.swatch i.lt span{color:#000}.swatch i.dk span{color:#fff}
+.fly.full .swatch i span{opacity:1;transition-delay:600ms}
+
+/* ── view switch (next to 2026): same type as the theme nav, current view underlined ── */
+.views{position:absolute;right:136px;top:52px;display:flex;gap:28px;direction:ltr}
+.views a{color:inherit;text-decoration:none;direction:rtl}
+.views a[aria-current="page"]{text-decoration:underline;text-underline-position:from-font}
+.views a:hover{text-decoration:underline}
+.views a:focus-visible{outline:1px solid #000;outline-offset:3px}
+
+/* ── extras: the board photos a theme brings in (theme 3 places, theme 4 materials) ── */
+.extra{position:absolute;opacity:0;transition:opacity 700ms ease;pointer-events:none}
+.extra.on{opacity:1;transition-delay:300ms}
+.extra img{position:absolute;inset:0;width:100%;height:100%;object-fit:cover;display:block}
+.extra .frame.swatch{position:absolute;inset:0}
+.extra .xl{position:absolute;right:0;bottom:calc(100% + 5px);font-size:13px;letter-spacing:1px;line-height:1;white-space:nowrap;direction:rtl}
+.extra.patch .xl{bottom:auto;top:8px;right:8px;padding:4px 6px;background:var(--bg)}
+
+
+/* version switch (גרסה 1 · גרסה 2), left of the photo/colour switch */
+.vers{position:absolute;right:290px;top:52px;display:flex;gap:20px;direction:ltr}
+.vers a{color:inherit;text-decoration:none;direction:rtl}
+.vers a[aria-current="page"]{text-decoration:underline;text-underline-position:from-font}
+.vers a:hover{text-decoration:underline}
+.vers a:focus-visible{outline:1px solid #000;outline-offset:3px}

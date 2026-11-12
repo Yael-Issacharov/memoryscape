@@ -1,0 +1,4 @@
+# test renders — regenerate with tools/shot.sh
+shots/
+.DS_Store
+__pycache__/

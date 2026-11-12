@@ -1,0 +1,10 @@
+# Memoryscape — links
+- Switch between versions with "גרסה 1 · 2 · 3" (top right).
+- **v3 (map):** http://localhost:4512/v3/ · `?view=haifa|ta` · `?layer=t1..t4|color`
+- **v2:** http://localhost:4512/v2/ · colour view http://localhost:4512/v2/colors.html · `?theme=1..4`
+- **v1:**
+- Photo view: http://localhost:4512 (launch config `memoryscape`) · `?theme=1` · `?theme=2`
+- Colour view: http://localhost:4512/colors.html · `?theme=1` · `?theme=2`
+- Questionnaire (place / material / hidden text per photo): https://claude.ai/artifact/QN6grkQ1tcAZ1qNuH9scdV
+- Figma: https://www.figma.com/design/LqkIx4BtVggzKCIur4NDsg/Untitled?node-id=1-5 (default) · node 1-61 (theme 1) · node 1-26 (theme 2) · node 2-2 (places board) · node 2-17 (materials board)
+- Studio Pulse card: https://claude.ai/artifact/LBKA2XPXUiCzvCq8hpWyv4 (`projects/memoryscape`)

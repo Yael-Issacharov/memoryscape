@@ -1,0 +1,20 @@
+{
+  "source": "Figma LqkIx4BtVggzKCIur4NDsg — section 2:2 'מקומות' and 2:17 'חומרים'. Each label sits under its image, right edges aligned.",
+  "places": [
+    {"id":"yarkon-park","label":"פארק הירקון","node":"2:10","file":"places/yarkon-park.png"},
+    {"id":"wadi-shiach-orchard","label":"בוסתן ואדי שיח","node":"2:11","file":"places/wadi-shiach-orchard.png"},
+    {"id":"klay-8-givatayim","label":"קלעי 8 גבעתיים","node":"2:12","file":"places/klay-8-givatayim.png"},
+    {"id":"matalon-70","label":"מטלון 70","node":"2:13","file":"places/matalon-70.png"},
+    {"id":"shalom-tower","label":"מגדל שלום","node":"2:14","file":"places/shalom-tower.png"},
+    {"id":"yaavetz-2a","label":"יעבץ 2א","node":"2:15","file":"places/yaavetz-2a.png"},
+    {"id":"hatachtit","label":"התחתית","node":"2:16","file":"places/hatachtit.png"}
+  ],
+  "materials": [
+    {"id":"sidewalk","label":"מדרכה","node":"2:24","file":"materials/sidewalk.png"},
+    {"id":"painted-floor","label":"רצפה מצויירת","node":"2:25","file":"materials/painted-floor.png"},
+    {"id":"sesame-floor","label":"רצפת שומשום","node":"2:26","file":"materials/sesame-floor.png"},
+    {"id":"grass","label":"דשא","node":"2:27","file":"materials/grass.png"},
+    {"id":"asphalt","label":"אספלט","node":"2:28","file":"materials/asphalt.png"},
+    {"id":"gold-tile","label":"מרצפת זהב","node":"2:29","file":"materials/gold-tile.png"}
+  ]
+}
