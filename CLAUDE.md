@@ -1,7 +1,8 @@
 # Memoryscape — Exercise 02 (PP course)
 
 ## WHERE WE ARE (2026-11-12, v3 added)
-- **In git (12/11):** private repo https://github.com/Yael-Issacharov/memoryscape (`main`), pushed at Yael's request. `shots/` is git-ignored. Commit author = her GitHub noreply address. Push as **Yael-Issacharov** (`gh auth switch --user Yael-Issacharov`), then switch back to yaeli-byte.
+- **Live (12/11): https://yael-issacharov.github.io/memoryscape/** (v1) · `/v2/` · `/v3/`. GitHub Pages from `main` /, repo **public** at Yael's request (needed for Pages on the free plan), https://github.com/Yael-Issacharov/memoryscape. A push to `main` redeploys in about 1 minute. Push as **Yael-Issacharov**, then switch gh back to yaeli-byte. The commit author is her GitHub noreply address. `shots/` is git-ignored.
+- **v3 theme map = OpenFreeMap "positron" via MapLibre (maplibre-gl 4.7.1 + maplibre-gl-leaflet 0.0.22), with all symbol layers removed.** Stadia (the old label-free map) answers 401 off localhost, so it can't be used on the live site. The plain white map is still OSM tiles (they work on github.io).
 - **Three versions, all kept**, with a "גרסה 1 · 2 · 3" switch on every page (it keeps the theme; v1/v2 also keep photo/colour).
   - v1 = root (`index.html`, `colors.html`, `app.*`). v2 = `v2/` (photos 1.5×, themes swap content in place). v3 = `v3/index.html`.
 - **v3 type rule (Yael 12/11): every text on screen is one size**, `--fs:10.5px` (14px, then −25% on 12/11) with tracking `--ls:.05em` (title .08em, caps). It includes the title, chips, labels, layers, legend, timeline, popup and attribution. Measured: one computed size, 10.5px.
