@@ -413,6 +413,26 @@ function washPath(ctx, cx, cy, r, rnd){   // a wobbly closed shape: a circle pus
   }
   ctx.closePath();
 }
+// The area outline (the memory's Tel Aviv region / city, from areas.js) projected to the screen, then pulled toward the
+// exact point by t (1 = the full area, 0 = the point). A slow wobble along the edge keeps it hand-painted, not ruled.
+function areaRings(m, feature){
+  const g = feature.geometry, polys = g.type==='Polygon' ? [g.coordinates] : g.coordinates;
+  return polys.map(poly => poly[0].map(([lng,lat]) => m.latLngToContainerPoint([lat,lng])));
+}
+function shrunkPath(ctx, rings, pt, t, rnd, size){
+  const ph1 = rnd()*6.3, ph2 = rnd()*6.3, f1 = 2+rnd()*3, f2 = 7+rnd()*5, amp = size*.018;
+  ctx.beginPath();
+  for(const ring of rings){
+    const n = ring.length;
+    ring.forEach((p,k)=>{
+      const a = k/n*Math.PI*2, w = amp*(Math.sin(a*f1+ph1) + .5*Math.sin(a*f2+ph2));
+      let dx = p.x-pt.x, dy = p.y-pt.y; const d = Math.hypot(dx,dy) || 1;
+      const x = pt.x + dx*t + dx/d*w, y = pt.y + dy*t + dy/d*w;
+      k ? ctx.lineTo(x,y) : ctx.moveTo(x,y);
+    });
+    ctx.closePath();
+  }
+}
 const Heat = L.Layer.extend({
   onAdd(m){ this._c = L.DomUtil.create('canvas','heat leaflet-zoom-hide'); m.getPanes().overlayPane.appendChild(this._c); m.on('moveend zoomend resize', this.redraw, this); this.redraw(); },
   onRemove(m){ this._c.remove(); m.off('moveend zoomend resize', this.redraw, this); },
@@ -428,21 +448,27 @@ const Heat = L.Layer.extend({
       const P = PLACES[MEM[mid].place], pt = m.latLngToContainerPoint(P.ll);
       const mpp = 40075016.686*Math.cos(P.ll[0]*Math.PI/180)/Math.pow(2, m.getZoom()+8);
       const R = HEAT_R/mpp;
-      if(pt.x < -2*R || pt.y < -2*R || pt.x > size.x+2*R || pt.y > size.y+2*R) continue;
+      const F = AREA_OF[P.area]; if(!F) continue;
+      const rings = areaRings(m, F);
+      const bb = rings.flat().reduce((b,p)=>({x0:Math.min(b.x0,p.x),y0:Math.min(b.y0,p.y),x1:Math.max(b.x1,p.x),y1:Math.max(b.y1,p.y)}),{x0:1e9,y0:1e9,x1:-1e9,y1:-1e9});
+      const span = Math.max(bb.x1-bb.x0, bb.y1-bb.y0);
       for(const fam of T2[mid]){
         const rnd = seeded(mid+fam), ramp = WASH[fam];
-        const ox = (rnd()-.5)*R*.35, oy = (rnd()-.5)*R*.35;   // each family's wash sits slightly off the point, so "both" reads as two pours
-        // each wash is ONE flat translucent layer with a soft edge; the inner, darker ones drift off-centre, like the cores in the reference
-        let cx = pt.x + ox, cy = pt.y + oy;
-        ramp.forEach((col, j)=>{
-          const r = R*(1 - j*.2)*(.85 + rnd()*.3);
-          cx += (rnd()-.5)*R*.22; cy += (rnd()-.5)*R*.22;
-          ctx.filter = `blur(${Math.max(.6, R*.012)}px)`;
-          washPath(ctx, cx, cy, r, rnd); ctx.fillStyle = col; ctx.globalAlpha = j===0 ? .30 : .34; ctx.fill();
+        // the stain spreads FROM the exact place OUT along the real outline of its area (Yael 15/11): the outer wash is the
+        // whole area, each darker wash is that same outline pulled closer to the point
+        [1, .7, .46, .26].forEach((t, j)=>{
+          ctx.filter = `blur(${Math.max(.6, span*.006)}px)`;
+          shrunkPath(ctx, rings, pt, t*(.96+rnd()*.08), rnd, span*t);
+          ctx.fillStyle = ramp[j]; ctx.globalAlpha = j===0 ? .26 : .30; ctx.fill('evenodd');
           ctx.filter = 'none';
-          // pigment pools faintly at the edge of each wash
-          ctx.globalAlpha = .07; ctx.strokeStyle = ramp[Math.min(j+2, ramp.length-1)]; ctx.lineWidth = 1.4; ctx.stroke();
+          ctx.globalAlpha = .08; ctx.strokeStyle = ramp[Math.min(j+2, ramp.length-1)]; ctx.lineWidth = 1.2; ctx.stroke();
         });
+        // the dark core: a small stain sitting exactly on the memory's location
+        const core = Math.max(7, 260/mpp);
+        ctx.filter = `blur(${Math.max(.5, core*.12)}px)`;
+        washPath(ctx, pt.x, pt.y, core, rnd); ctx.fillStyle = ramp[4]; ctx.globalAlpha = .62; ctx.fill();
+        washPath(ctx, pt.x, pt.y, core*.55, rnd); ctx.globalAlpha = .5; ctx.fill();
+        ctx.filter = 'none';
       }
     }
     // grain: knock tiny specks out of the paint
