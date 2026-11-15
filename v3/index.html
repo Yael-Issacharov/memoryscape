@@ -471,59 +471,61 @@ const Heat = L.Layer.extend({
     const fx = F.getContext('2d', {willReadFrequently:true}), lx = L2.getContext('2d');
     const zoomFactor = 40075016.686/Math.pow(2, m.getZoom()+8);       // metres per px at the equator
     const mids = Object.keys(MEM).filter(mid => MEM[mid].place && AREA_OF[PLACES[MEM[mid].place].area] && HEAT.w[mid] > .004);
-    for(const fam of ['dash','diag']){
-      const mine = mids.filter(mid => T2[mid].includes(fam));
-      if(!mine.length) continue;
-      // 1. pour the ink into the field
+    // ONE DISTINCT STAIN PER MEMORY (Yael 15/11: the merged field read too abstract). Each memory gets its own field —
+    // a dark core on the exact place + its area outline, lightly blurred, spilling a little past the border — and its own
+    // contour washes. Stains overlap with multiply, so neighbours run into each other the way the washes in the drawing do.
+    const pairs = [];
+    for(const mid of mids) for(const fam of T2[mid]) pairs.push([mid, fam]);
+    for(const [mid, fam] of pairs){
+      const w = HEAT.w[mid], P = PLACES[MEM[mid].place], pt = m.latLngToContainerPoint(P.ll), mpp = zoomFactor*Math.cos(P.ll[0]*Math.PI/180);
+      const rings = areaRings(m, AREA_OF[P.area]);
+      let x0=1e9,y0=1e9,x1=-1e9,y1=-1e9; for(const r of rings) for(const p of r){ x0=Math.min(x0,p.x); y0=Math.min(y0,p.y); x1=Math.max(x1,p.x); y1=Math.max(y1,p.y); }
+      const span = Math.max(x1-x0, y1-y0)/HEAT_S, rnd = seeded(mid+fam);
+      // the region of the grid this stain can touch (its area + spill), so each stain only costs its own pixels
+      const pad = span*.25 + 12;
+      const gx0 = Math.max(0, Math.floor(Math.min(x0, pt.x)/HEAT_S - pad)), gy0 = Math.max(0, Math.floor(Math.min(y0, pt.y)/HEAT_S - pad));
+      const gx1 = Math.min(gw, Math.ceil(Math.max(x1, pt.x)/HEAT_S + pad)), gy1 = Math.min(gh, Math.ceil(Math.max(y1, pt.y)/HEAT_S + pad));
+      if(gx1 <= gx0 || gy1 <= gy0) continue;
+      // 1. this memory's ink
       fx.globalCompositeOperation = 'source-over'; fx.clearRect(0,0,gw,gh); fx.globalCompositeOperation = 'lighter';
-      for(const mid of mine){
-        const w = HEAT.w[mid], P = PLACES[MEM[mid].place], pt = m.latLngToContainerPoint(P.ll), mpp = zoomFactor*Math.cos(P.ll[0]*Math.PI/180);
-        const rings = areaRings(m, AREA_OF[P.area]);
-        let x0=1e9,y0=1e9,x1=-1e9,y1=-1e9; for(const r of rings) for(const p of r){ x0=Math.min(x0,p.x); y0=Math.min(y0,p.y); x1=Math.max(x1,p.x); y1=Math.max(y1,p.y); }
-        const span = Math.max(x1-x0, y1-y0)/HEAT_S;
-        // the area: filled, then blurred so it bleeds over its border; it grows in from the point as w rises
-        const grow = .25 + .75*w;
-        fx.filter = `blur(${Math.max(1.5, span*(.05 + .07*w))}px)`;
-        fx.beginPath();
-        for(const r of rings){ r.forEach((p,k)=>{ const x=(pt.x+(p.x-pt.x)*grow)/HEAT_S, y=(pt.y+(p.y-pt.y)*grow)/HEAT_S; k?fx.lineTo(x,y):fx.moveTo(x,y); }); fx.closePath(); }
-        fx.fillStyle = `rgba(255,255,255,${.34*w})`; fx.fill('evenodd');
-        // the core: ink is deepest on the exact place
-        const rc = Math.max(5, 900/mpp/HEAT_S) * (.45 + .55*w), x = pt.x/HEAT_S, y = pt.y/HEAT_S;
-        fx.filter = 'none';
-        const rnd = seeded(mid+'core'), sx = .65 + rnd()*.7, rot = rnd()*Math.PI;
-        fx.save(); fx.translate(x,y); fx.rotate(rot); fx.scale(sx, 1/sx);
-        const gr = fx.createRadialGradient(0,0,0,0,0,rc);
-        gr.addColorStop(0, `rgba(255,255,255,${.9*w})`); gr.addColorStop(.35, `rgba(255,255,255,${.55*w})`); gr.addColorStop(.75, `rgba(255,255,255,${.18*w})`); gr.addColorStop(1, 'rgba(255,255,255,0)');
-        fx.fillStyle = gr; fx.fillRect(-rc, -rc, rc*2, rc*2); fx.restore();
-      }
+      const grow = .3 + .7*w;
+      fx.filter = `blur(${Math.max(1.2, span*.035)}px)`;
+      fx.beginPath();
+      for(const r of rings){ r.forEach((p,k)=>{ const x=(pt.x+(p.x-pt.x)*grow)/HEAT_S, y=(pt.y+(p.y-pt.y)*grow)/HEAT_S; k?fx.lineTo(x,y):fx.moveTo(x,y); }); fx.closePath(); }
+      fx.fillStyle = `rgba(255,255,255,${.30*w})`; fx.fill('evenodd');
       fx.filter = 'none';
-      const field = fx.getImageData(0,0,gw,gh).data;
-      // the field + flowing noise, computed once and shared by every level
-      const drift = HEAT.drift, V = new Float32Array(gw*gh);
-      const WARP = 14/k3;                                   // how far (field px) the flow pushes the contours
-      for(let yy=0, i=0; yy<gh; yy++) for(let xx=0; xx<gw; xx++, i++){
-        // domain warp: read the ink from a nearby spot chosen by a slow, drifting noise — every contour bends like liquid
-        // the flow fades out where the ink is dense, so the dark cores stay pinned to the exact places
-        const amp = WARP*2*(1 - Math.min(1, field[i*4+3]/255*1.6));
-        const sx = Math.min(gw-1, Math.max(0, Math.round(xx + (noise(xx*k3/22 + drift, yy*k3/22) - .5)*amp)));
-        const sy = Math.min(gh-1, Math.max(0, Math.round(yy + (noise(xx*k3/22 + 9.7, yy*k3/22 - drift) - .5)*amp)));
-        const f = field[(sy*gw + sx)*4 + 3]/255;          // the ink amount lives in the alpha channel
-        V[i] = f < .02 ? f : f + (noise(xx*k3/26 + drift, yy*k3/26 - drift*.6) - .5)*(.10 + .14*f) + (noise(xx*k3/7 - drift*1.7, yy*k3/7)-.5)*.05;
+      const rc = Math.max(5, 1100/mpp/HEAT_S) * (.45 + .55*w), cx = pt.x/HEAT_S, cy = pt.y/HEAT_S;
+      const sx = .7 + rnd()*.6, rot = rnd()*Math.PI;
+      fx.save(); fx.translate(cx,cy); fx.rotate(rot); fx.scale(sx, 1/sx);
+      const gr = fx.createRadialGradient(0,0,0,0,0,rc);
+      gr.addColorStop(0, `rgba(255,255,255,${.95*w})`); gr.addColorStop(.4, `rgba(255,255,255,${.6*w})`); gr.addColorStop(.8, `rgba(255,255,255,${.22*w})`); gr.addColorStop(1, 'rgba(255,255,255,0)');
+      fx.fillStyle = gr; fx.fillRect(-rc,-rc,rc*2,rc*2); fx.restore();
+      const bw = gx1-gx0, bh = gy1-gy0;
+      const field = fx.getImageData(gx0, gy0, bw, bh).data;
+      // 2. organic edge: a gentle warp (fading near the core so it stays on the place) + a little grainy noise
+      const drift = HEAT.drift + rnd()*10, WARP = 8/k3, V = new Float32Array(bw*bh);
+      for(let yy=0, i=0; yy<bh; yy++) for(let xx=0; xx<bw; xx++, i++){
+        const f0 = field[i*4+3]/255; if(f0 < .015){ V[i] = 0; continue; }
+        const X = xx+gx0, Y = yy+gy0, amp = WARP*2*(1 - Math.min(1, f0*1.8));
+        const sxx = Math.min(bw-1, Math.max(0, Math.round(xx + (noise(X*k3/18 + drift, Y*k3/18) - .5)*amp)));
+        const syy = Math.min(bh-1, Math.max(0, Math.round(yy + (noise(X*k3/18 + 9.7, Y*k3/18 - drift) - .5)*amp)));
+        const f = field[(syy*bw + sxx)*4 + 3]/255;
+        V[i] = f + (noise(X*k3/11 + drift, Y*k3/11) - .5)*.07 + (noise(X*k3/4, Y*k3/4 - drift)-.5)*.03;
       }
-      // 2. paint each contour level as a wash: flowing-noise edge, soft inside, a darker rim where the pigment pools
-      const ramp = WASH[fam];
-      HEAT_LEVELS.forEach((lev, j)=>{
-        const img = lx.createImageData(gw, gh), d = img.data, [cr,cg,cb] = hexRGB(ramp[j]), eps = .035;
+      // 3. four crisp washes, each with a pooled-pigment rim — the hand-made edge of the drawing
+      const ramp = WASH[fam], LEVELS = [.07, .2, .38, .62];
+      lx.clearRect(0,0,gw,gh);
+      LEVELS.forEach((lev, j)=>{
+        const img = lx.createImageData(bw, bh), d = img.data, [cr,cg,cb] = hexRGB(ramp[j+1 > 4 ? 4 : (j===0?0:j+1)]), eps = .012;
         for(let i=0; i<V.length; i++){
-          const v = V[i];
-          if(v < lev - eps) continue;
-          const inside = Math.min(1, (v - lev + eps)/(2*eps));             // soft edge
-          const rim = v < lev + .05 ? 1 - (v - lev)/.05 : 0;               // pooled pigment just inside the edge
-          const o = i*4; d[o]=cr; d[o+1]=cg; d[o+2]=cb; d[o+3] = Math.round(255*Math.min(1, inside*(.30 + .20*Math.max(0,rim))));
+          const v = V[i]; if(v < lev - eps) continue;
+          const inside = Math.min(1, (v - lev + eps)/(2*eps));                 // a crisp edge
+          const rim = v < lev + .045 ? 1 - (v - lev)/.045 : 0;                 // pigment pools just inside the edge
+          const o = i*4; d[o]=cr; d[o+1]=cg; d[o+2]=cb; d[o+3] = Math.round(255*Math.min(1, inside*(.24 + .34*Math.max(0, rim))));
         }
         lx.putImageData(img, 0, 0);
         ctx.globalCompositeOperation = 'multiply'; ctx.globalAlpha = 1; ctx.imageSmoothingEnabled = true;
-        ctx.drawImage(L2, 0, 0, gw*HEAT_S, gh*HEAT_S);
+        ctx.drawImage(L2, 0, 0, bw, bh, gx0*HEAT_S, gy0*HEAT_S, bw*HEAT_S, bh*HEAT_S);
       });
     }
     // 3. grain knocked out of the paint
