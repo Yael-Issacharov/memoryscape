@@ -8,7 +8,7 @@
 <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css">
 <link rel="stylesheet" href="https://unpkg.com/maplibre-gl@4.7.1/dist/maplibre-gl.css">
 <style>
-/* Memoryscape — FINAL (14/11): a standalone copy of v3 with no links to the other versions. Edit v3, then re-copy (see CLAUDE.md).
+/* Memoryscape — FINAL: generated from v3 by tools/make-final.py (no links to the other versions). Do not edit here.
    Memoryscape v3 (12/11) — the memories on a map of Israel. Behaves like Google Maps: drag, zoom, place chips on top,
    a layers button bottom-left. Default layer = "white map"; themes 1–4 + colour are drawn ON the map as areas around each place.
    v1 (../) and v2 (../v2/) are kept as they were. */
@@ -95,6 +95,11 @@ a{color:inherit}
 .legend.on{display:flex}
 .legend .it{display:flex;align-items:center;gap:8px;white-space:nowrap}
 .sw{width:34px;height:20px;border:1px solid var(--line);display:inline-block;flex:none}
+.ramp{display:flex;flex-direction:column;gap:4px}
+.wr{display:flex;direction:rtl}   /* light (right) → dark (left), read like the Hebrew */
+.wr i{width:14px;height:12px;display:block;opacity:.75;mix-blend-mode:multiply}
+.legend .more{opacity:.7}
+.heat{position:absolute;left:0;top:0;pointer-events:none}
 
 /* map areas drawn by the themes */
 .area{transition:opacity 400ms ease}
@@ -375,8 +380,80 @@ function palPattern(mid){   // the memory's 10 colours as horizontal bands acros
   def(`<pattern id="${id}" patternUnits="objectBoundingBox" patternContentUnits="objectBoundingBox" width="1" height="1">${bands}</pattern>`);
   return id;
 }
+/* ── theme 2 as a watercolour HEAT MAP (Yael 14/11, after Max Neuhaus' "aural topography of Times Square", 1977) ──
+   Every memory is a stack of translucent washes at its place: wobbly hand-drawn edges, a darker rim where the
+   pigment pools, grain scattered through the paint, and multiply blending, so overlaps go deep brown / plum.
+   יפתח = the warm family (yellow → orange → red-orange), יעל = the cool family (lavender → purple → indigo); a memory of both gets both. */
+const WASH = {
+  dash: ['#f6e27a','#f7b35a','#f2843c','#d9552a','#9c2f1e'],   // יפתח — warm, light → dark
+  diag: ['#cbb8ec','#a58ade','#7f62cc','#5a40ad','#33236e'],   // יעל — cool, light → dark
+};
+const HEAT_R = 1900;   // big enough that neighbouring memories run into one continuous field, as in the reference   // outer wash radius in metres; the inner washes shrink toward the core
+function seeded(n){ let s = 0; for(const ch of n) s = (s*31 + ch.charCodeAt(0)) >>> 0; return ()=>{ s = (s*1664525 + 1013904223) >>> 0; return s/4294967296; }; }
+let grainTile = null;
+function grain(){
+  if(grainTile) return grainTile;
+  const g = document.createElement('canvas'); g.width = g.height = 160; const x = g.getContext('2d'), d = x.createImageData(160,160);
+  for(let i=0;i<d.data.length;i+=4){ const v = Math.random(); d.data[i]=d.data[i+1]=d.data[i+2]=0; d.data[i+3] = v<.55 ? 0 : Math.round((v-.55)*190); }
+  x.putImageData(d,0,0); return grainTile = g;
+}
+function washPath(ctx, cx, cy, r, rnd){   // a wobbly closed shape: a circle pushed in and out by 3 low-frequency waves
+  const ph = [rnd()*6.3, rnd()*6.3, rnd()*6.3], amp = [.16+rnd()*.12, .07+rnd()*.06, .02+rnd()*.02], N = 72;
+  const sx = .75 + rnd()*.7, rot = rnd()*Math.PI;   // stretched blots, not circles                                  // a little stretched and turned, like a brush wash
+  ctx.beginPath();
+  for(let i=0;i<=N;i++){
+    const a = i/N*Math.PI*2;
+    const k = 1 + amp[0]*Math.sin(2*a+ph[0]) + amp[1]*Math.sin(3*a+ph[1]) + amp[2]*Math.sin(7*a+ph[2]) + (rnd()-.5)*.025;
+    const px = Math.cos(a)*r*k*sx, py = Math.sin(a)*r*k;
+    const x = cx + px*Math.cos(rot) - py*Math.sin(rot), y = cy + px*Math.sin(rot) + py*Math.cos(rot);
+    i ? ctx.lineTo(x,y) : ctx.moveTo(x,y);
+  }
+  ctx.closePath();
+}
+const Heat = L.Layer.extend({
+  onAdd(m){ this._c = L.DomUtil.create('canvas','heat leaflet-zoom-hide'); m.getPanes().overlayPane.appendChild(this._c); m.on('moveend zoomend resize', this.redraw, this); this.redraw(); },
+  onRemove(m){ this._c.remove(); m.off('moveend zoomend resize', this.redraw, this); },
+  redraw(){
+    if(!this._map) return;
+    const m = this._map, size = m.getSize(), dpr = window.devicePixelRatio || 1, c = this._c;
+    L.DomUtil.setPosition(c, m.containerPointToLayerPoint([0,0]));
+    c.width = size.x*dpr; c.height = size.y*dpr; c.style.width = size.x+'px'; c.style.height = size.y+'px';
+    const ctx = c.getContext('2d'); ctx.setTransform(dpr,0,0,dpr,0,0); ctx.clearRect(0,0,size.x,size.y);
+    ctx.globalCompositeOperation = 'multiply';
+    const mids = Object.keys(MEM).filter(mid=>MEM[mid].place && inTime(mid)).sort((a,b)=>(YEAR[a]??0)-(YEAR[b]??0));
+    for(const mid of mids){
+      const P = PLACES[MEM[mid].place], pt = m.latLngToContainerPoint(P.ll);
+      const mpp = 40075016.686*Math.cos(P.ll[0]*Math.PI/180)/Math.pow(2, m.getZoom()+8);
+      const R = HEAT_R/mpp;
+      if(pt.x < -2*R || pt.y < -2*R || pt.x > size.x+2*R || pt.y > size.y+2*R) continue;
+      for(const fam of T2[mid]){
+        const rnd = seeded(mid+fam), ramp = WASH[fam];
+        const ox = (rnd()-.5)*R*.35, oy = (rnd()-.5)*R*.35;   // each family's wash sits slightly off the point, so "both" reads as two pours
+        // each wash is ONE flat translucent layer with a soft edge; the inner, darker ones drift off-centre, like the cores in the reference
+        let cx = pt.x + ox, cy = pt.y + oy;
+        ramp.forEach((col, j)=>{
+          const r = R*(1 - j*.2)*(.85 + rnd()*.3);
+          cx += (rnd()-.5)*R*.22; cy += (rnd()-.5)*R*.22;
+          ctx.filter = `blur(${Math.max(.6, R*.012)}px)`;
+          washPath(ctx, cx, cy, r, rnd); ctx.fillStyle = col; ctx.globalAlpha = j===0 ? .30 : .34; ctx.fill();
+          ctx.filter = 'none';
+          // pigment pools faintly at the edge of each wash
+          ctx.globalAlpha = .07; ctx.strokeStyle = ramp[Math.min(j+2, ramp.length-1)]; ctx.lineWidth = 1.4; ctx.stroke();
+        });
+      }
+    }
+    // grain: knock tiny specks out of the paint
+    ctx.globalAlpha = 1; ctx.globalCompositeOperation = 'destination-out';
+    ctx.fillStyle = ctx.createPattern(grain(), 'repeat'); ctx.fillRect(0,0,size.x,size.y);
+    ctx.globalCompositeOperation = 'source-over';
+  },
+});
+const heat = new Heat();
+
 function drawLayer(id){
   areaGroup.clearLayers();
+  if(id==='t2'){ if(!map.hasLayer(heat)) heat.addTo(map); else heat.redraw(); return; }   // theme 2 = the watercolour heat map
+  if(map.hasLayer(heat)) map.removeLayer(heat);
   if(id==='map') return;
   // memories per city, in time order (oldest at the bottom of the stack)
   const byArea = {};
@@ -419,7 +496,7 @@ function previewHTML(id){
 }
 const LEGENDS = {   // only layers with a real key get a legend (Yael 12/11)
   t1:`<span class="it"><span class="sw dash"></span>הורים וילדים</span><span class="it"><span class="sw dots"></span>נכדים וסבים</span>`,
-  t2:`<span class="it"><span class="sw dash"></span>יפתח</span><span class="it"><span class="sw diag"></span>יעל</span>`,
+  t2:`<span class="ramp"><span class="it"><span class="wr">${WASH.dash.slice(0,4).map(c=>`<i style="background:${c}"></i>`).join('')}</span>יפתח</span><span class="it"><span class="wr">${WASH.diag.slice(0,4).map(c=>`<i style="background:${c}"></i>`).join('')}</span>יעל</span><span class="it more">← יותר זיכרונות</span></span>`,
 };
 const panel = document.getElementById('panel'), layersEl = document.getElementById('layers'), legend = document.getElementById('legend');
 let current = 'map';
