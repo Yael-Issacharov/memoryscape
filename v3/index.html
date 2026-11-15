@@ -492,7 +492,7 @@ function drawLayer(id){
 function previewHTML(id){
   if(id==='map') return `<div class="pv map"></div>`;
   if(id==='t1')  return `<div class="pv split"><div class="pv dash" style="position:static;border:0"></div><div class="pv dots" style="position:static;border:0"></div></div>`;
-  if(id==='t2')  return `<div class="pv split"><div class="pv dash" style="position:static;border:0"></div><div class="pv diag" style="position:static;border:0"></div></div>`;
+  if(id==='t2')  return `<div class="pv" style="background:radial-gradient(ellipse 42% 36% at 36% 44%,#9c2f1e 0 18%,#f2843c 19% 46%,#f6e27a 47% 100%,transparent 101%) ,radial-gradient(ellipse 40% 38% at 64% 60%,#33236e 0 18%,#7f62cc 19% 46%,#cbb8ec 47% 100%,transparent 101%),#fff;background-blend-mode:multiply;opacity:.85"></div>`;   // a warm and a cool wash
   if(id==='t3')  return `<div class="pv"><img src="${placeImg('yarkon-park')}" alt=""></div>`;
   if(id==='t4')  return `<div class="pv"><img src="${matImg('painted-floor')}" alt=""></div>`;
   if(id==='color') return `<div class="pv stripes">${(PAL.m05||[]).map(c=>`<i style="background:${c.hex};flex:${c.share}"></i>`).join('')}</div>`;
