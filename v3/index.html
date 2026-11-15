@@ -433,51 +433,132 @@ function shrunkPath(ctx, rings, pt, t, rnd, size){
     ctx.closePath();
   }
 }
+/* ── the heat map as ONE continuous ink field (Yael 15/11: flow + continuity between stains, organic, spreading animation) ──
+   Every memory pours "ink" into a low-res field: strongest exactly on its place (a soft core), spreading through its area
+   (the area outline, blurred so it spills over the border into the neighbours). The stains are the field's contour levels,
+   painted as stacked washes (like the terraces in the 1977 drawing), with flowing-noise edges and a darker rim where the
+   pigment pools. Each memory's ink amount w (0..1) animates, so changing year makes stains spread out from the point and
+   flow into their area, or pull back. */
+const HEAT_LEVELS = [.10, .24, .40, .58, .80];        // contour thresholds, light → dark (ramp colours 0..4)
+const HEAT = { w:{}, from:{}, target:{}, t0:0, dur:1300, raf:0, drift:0 };
+// smooth value noise, sampled bilinearly — gives the edges a slow, liquid wobble
+const NZ = 48, nzv = Array.from({length:NZ*NZ}, ()=>Math.random());
+function noise(x, y){
+  const xi = Math.floor(x), yi = Math.floor(y), fx = x-xi, fy = y-yi, u = fx*fx*(3-2*fx), v = fy*fy*(3-2*fy);
+  const g = (i,j)=>nzv[((j%NZ+NZ)%NZ)*NZ + ((i%NZ+NZ)%NZ)];
+  return (g(xi,yi)*(1-u)+g(xi+1,yi)*u)*(1-v) + (g(xi,yi+1)*(1-u)+g(xi+1,yi+1)*u)*v;
+}
+function hexRGB(h){ const n=parseInt(h.slice(1),16); return [n>>16, n>>8&255, n&255]; }
 const Heat = L.Layer.extend({
-  onAdd(m){ this._c = L.DomUtil.create('canvas','heat leaflet-zoom-hide'); m.getPanes().overlayPane.appendChild(this._c); m.on('moveend zoomend resize', this.redraw, this); this.redraw(); },
-  onRemove(m){ this._c.remove(); m.off('moveend zoomend resize', this.redraw, this); },
+  onAdd(m){
+    this._c = L.DomUtil.create('canvas','heat leaflet-zoom-hide'); m.getPanes().overlayPane.appendChild(this._c);
+    this._f = document.createElement('canvas');                       // the scalar field (R channel)
+    this._l = document.createElement('canvas');                       // one contour level, coloured
+    m.on('moveend zoomend resize', this.redraw, this);
+    for(const mid in MEM) HEAT.w[mid] = 0;                            // arrive from nothing: the first view spreads in
+    heatRetarget();
+  },
+  onRemove(m){ this._c.remove(); m.off('moveend zoomend resize', this.redraw, this); cancelAnimationFrame(HEAT.raf); HEAT.raf = 0; },
   redraw(){
     if(!this._map) return;
     const m = this._map, size = m.getSize(), dpr = window.devicePixelRatio || 1, c = this._c;
     L.DomUtil.setPosition(c, m.containerPointToLayerPoint([0,0]));
-    c.width = size.x*dpr; c.height = size.y*dpr; c.style.width = size.x+'px'; c.style.height = size.y+'px';
+    if(c.width !== size.x*dpr || c.height !== size.y*dpr){ c.width = size.x*dpr; c.height = size.y*dpr; c.style.width = size.x+'px'; c.style.height = size.y+'px'; }
     const ctx = c.getContext('2d'); ctx.setTransform(dpr,0,0,dpr,0,0); ctx.clearRect(0,0,size.x,size.y);
-    ctx.globalCompositeOperation = 'multiply';
-    const mids = Object.keys(MEM).filter(mid=>MEM[mid].place && inTime(mid)).sort((a,b)=>(YEAR[a]??0)-(YEAR[b]??0));
-    for(const mid of mids){
-      const P = PLACES[MEM[mid].place], pt = m.latLngToContainerPoint(P.ll);
-      const mpp = 40075016.686*Math.cos(P.ll[0]*Math.PI/180)/Math.pow(2, m.getZoom()+8);
-      const R = HEAT_R/mpp;
-      const F = AREA_OF[P.area]; if(!F) continue;
-      const rings = areaRings(m, F);
-      const bb = rings.flat().reduce((b,p)=>({x0:Math.min(b.x0,p.x),y0:Math.min(b.y0,p.y),x1:Math.max(b.x1,p.x),y1:Math.max(b.y1,p.y)}),{x0:1e9,y0:1e9,x1:-1e9,y1:-1e9});
-      const span = Math.max(bb.x1-bb.x0, bb.y1-bb.y0);
-      for(const fam of T2[mid]){
-        const rnd = seeded(mid+fam), ramp = WASH[fam];
-        // the stain spreads FROM the exact place OUT along the real outline of its area (Yael 15/11): the outer wash is the
-        // whole area, each darker wash is that same outline pulled closer to the point
-        [1, .7, .46, .26].forEach((t, j)=>{
-          ctx.filter = `blur(${Math.max(.6, span*.006)}px)`;
-          shrunkPath(ctx, rings, pt, t*(.96+rnd()*.08), rnd, span*t);
-          ctx.fillStyle = ramp[j]; ctx.globalAlpha = j===0 ? .26 : .30; ctx.fill('evenodd');
-          ctx.filter = 'none';
-          ctx.globalAlpha = .08; ctx.strokeStyle = ramp[Math.min(j+2, ramp.length-1)]; ctx.lineWidth = 1.2; ctx.stroke();
-        });
-        // the dark core: a small stain sitting exactly on the memory's location
-        const core = Math.max(7, 260/mpp);
-        ctx.filter = `blur(${Math.max(.5, core*.12)}px)`;
-        washPath(ctx, pt.x, pt.y, core, rnd); ctx.fillStyle = ramp[4]; ctx.globalAlpha = .62; ctx.fill();
-        washPath(ctx, pt.x, pt.y, core*.55, rnd); ctx.globalAlpha = .5; ctx.fill();
-        ctx.filter = 'none';
+    const HEAT_S = HEAT.raf ? 6 : 3, k3 = HEAT_S/3;          // coarser while animating (smooth frames), full detail once it settles
+    const gw = Math.ceil(size.x/HEAT_S), gh = Math.ceil(size.y/HEAT_S);
+    const F = this._f, L2 = this._l; F.width = L2.width = gw; F.height = L2.height = gh;
+    const fx = F.getContext('2d', {willReadFrequently:true}), lx = L2.getContext('2d');
+    const zoomFactor = 40075016.686/Math.pow(2, m.getZoom()+8);       // metres per px at the equator
+    const mids = Object.keys(MEM).filter(mid => MEM[mid].place && AREA_OF[PLACES[MEM[mid].place].area] && HEAT.w[mid] > .004);
+    for(const fam of ['dash','diag']){
+      const mine = mids.filter(mid => T2[mid].includes(fam));
+      if(!mine.length) continue;
+      // 1. pour the ink into the field
+      fx.globalCompositeOperation = 'source-over'; fx.clearRect(0,0,gw,gh); fx.globalCompositeOperation = 'lighter';
+      for(const mid of mine){
+        const w = HEAT.w[mid], P = PLACES[MEM[mid].place], pt = m.latLngToContainerPoint(P.ll), mpp = zoomFactor*Math.cos(P.ll[0]*Math.PI/180);
+        const rings = areaRings(m, AREA_OF[P.area]);
+        let x0=1e9,y0=1e9,x1=-1e9,y1=-1e9; for(const r of rings) for(const p of r){ x0=Math.min(x0,p.x); y0=Math.min(y0,p.y); x1=Math.max(x1,p.x); y1=Math.max(y1,p.y); }
+        const span = Math.max(x1-x0, y1-y0)/HEAT_S;
+        // the area: filled, then blurred so it bleeds over its border; it grows in from the point as w rises
+        const grow = .25 + .75*w;
+        fx.filter = `blur(${Math.max(1.5, span*(.05 + .07*w))}px)`;
+        fx.beginPath();
+        for(const r of rings){ r.forEach((p,k)=>{ const x=(pt.x+(p.x-pt.x)*grow)/HEAT_S, y=(pt.y+(p.y-pt.y)*grow)/HEAT_S; k?fx.lineTo(x,y):fx.moveTo(x,y); }); fx.closePath(); }
+        fx.fillStyle = `rgba(255,255,255,${.34*w})`; fx.fill('evenodd');
+        // the core: ink is deepest on the exact place
+        const rc = Math.max(5, 900/mpp/HEAT_S) * (.45 + .55*w), x = pt.x/HEAT_S, y = pt.y/HEAT_S;
+        fx.filter = 'none';
+        const rnd = seeded(mid+'core'), sx = .65 + rnd()*.7, rot = rnd()*Math.PI;
+        fx.save(); fx.translate(x,y); fx.rotate(rot); fx.scale(sx, 1/sx);
+        const gr = fx.createRadialGradient(0,0,0,0,0,rc);
+        gr.addColorStop(0, `rgba(255,255,255,${.9*w})`); gr.addColorStop(.35, `rgba(255,255,255,${.55*w})`); gr.addColorStop(.75, `rgba(255,255,255,${.18*w})`); gr.addColorStop(1, 'rgba(255,255,255,0)');
+        fx.fillStyle = gr; fx.fillRect(-rc, -rc, rc*2, rc*2); fx.restore();
       }
+      fx.filter = 'none';
+      const field = fx.getImageData(0,0,gw,gh).data;
+      // the field + flowing noise, computed once and shared by every level
+      const drift = HEAT.drift, V = new Float32Array(gw*gh);
+      const WARP = 14/k3;                                   // how far (field px) the flow pushes the contours
+      for(let yy=0, i=0; yy<gh; yy++) for(let xx=0; xx<gw; xx++, i++){
+        // domain warp: read the ink from a nearby spot chosen by a slow, drifting noise — every contour bends like liquid
+        const sx = Math.min(gw-1, Math.max(0, Math.round(xx + (noise(xx*k3/22 + drift, yy*k3/22) - .5)*WARP*2)));
+        const sy = Math.min(gh-1, Math.max(0, Math.round(yy + (noise(xx*k3/22 + 9.7, yy*k3/22 - drift) - .5)*WARP*2)));
+        const f = field[(sy*gw + sx)*4 + 3]/255;          // the ink amount lives in the alpha channel
+        V[i] = f < .02 ? f : f + (noise(xx*k3/26 + drift, yy*k3/26 - drift*.6) - .5)*(.10 + .14*f) + (noise(xx*k3/7 - drift*1.7, yy*k3/7)-.5)*.05;
+      }
+      // 2. paint each contour level as a wash: flowing-noise edge, soft inside, a darker rim where the pigment pools
+      const ramp = WASH[fam];
+      HEAT_LEVELS.forEach((lev, j)=>{
+        const img = lx.createImageData(gw, gh), d = img.data, [cr,cg,cb] = hexRGB(ramp[j]), eps = .035;
+        for(let i=0; i<V.length; i++){
+          const v = V[i];
+          if(v < lev - eps) continue;
+          const inside = Math.min(1, (v - lev + eps)/(2*eps));             // soft edge
+          const rim = v < lev + .05 ? 1 - (v - lev)/.05 : 0;               // pooled pigment just inside the edge
+          const o = i*4; d[o]=cr; d[o+1]=cg; d[o+2]=cb; d[o+3] = Math.round(255*Math.min(1, inside*(.30 + .20*Math.max(0,rim))));
+        }
+        lx.putImageData(img, 0, 0);
+        ctx.globalCompositeOperation = 'multiply'; ctx.globalAlpha = 1; ctx.imageSmoothingEnabled = true;
+        ctx.drawImage(L2, 0, 0, gw*HEAT_S, gh*HEAT_S);
+      });
     }
-    // grain: knock tiny specks out of the paint
-    ctx.globalAlpha = 1; ctx.globalCompositeOperation = 'destination-out';
+    // 3. grain knocked out of the paint
+    ctx.globalCompositeOperation = 'destination-out'; ctx.globalAlpha = 1;
     ctx.fillStyle = ctx.createPattern(grain(), 'repeat'); ctx.fillRect(0,0,size.x,size.y);
     ctx.globalCompositeOperation = 'source-over';
   },
 });
 const heat = new Heat();
+// ink targets follow the year slider; each change animates: spread out (older memories first) or pull back
+function heatRetarget(){
+  let order = 0;
+  const mids = Object.keys(MEM).sort((a,b)=>(YEAR[a]??0)-(YEAR[b]??0));
+  for(const mid of mids){
+    const want = (MEM[mid].place && inTime(mid)) ? 1 : 0;
+    HEAT.from[mid] = HEAT.w[mid] ?? 0; HEAT.target[mid] = want;
+    HEAT.delay = HEAT.delay || {}; HEAT.delay[mid] = want > HEAT.from[mid] ? (order++)*90 : 0;
+  }
+  HEAT.t0 = performance.now();
+  if(document.hidden){ for(const mid in HEAT.target) HEAT.w[mid] = HEAT.target[mid]; heat.redraw(); return; }   // no frames in a hidden tab: jump to the end
+  if(!HEAT.raf) HEAT.raf = requestAnimationFrame(heatTick);
+}
+function heatTick(now){
+  let busy = false;
+  for(const mid in HEAT.target){
+    const k = Math.min(1, Math.max(0, (now - HEAT.t0 - (HEAT.delay[mid]||0)) / HEAT.dur));
+    const e = 1 - Math.pow(1-k, 3);                                    // ease-out: fast pour, slow settle
+    HEAT.w[mid] = HEAT.from[mid] + (HEAT.target[mid] - HEAT.from[mid]) * e;
+    if(k < 1) busy = true;
+  }
+  HEAT.drift += .004;                                                   // the edges flow while the ink moves
+  heat.redraw();
+  HEAT.raf = busy ? requestAnimationFrame(heatTick) : 0;
+  if(!busy) heat.redraw();                                              // settled: redraw at full detail
+}
+const still = matchMedia('(prefers-reduced-motion: reduce)').matches;
+if(still) HEAT.dur = 1;
 
 function drawLayer(id){
   areaGroup.clearLayers();
@@ -590,7 +671,7 @@ function applyTime(){
   yr.setAttribute('aria-valuetext', decade(+yr.value));
   ticks.querySelectorAll('button').forEach(b=>b.setAttribute('aria-pressed', String(+b.dataset.y===+yr.value)));
   for(const mk of markers) mk.getElement()?.classList.toggle('later', !inTime(mk.memId));
-  drawLayer(current);
+  if(current==='t2' && map.hasLayer(heat)) heatRetarget(); else drawLayer(current);
 }
 yr.addEventListener('input', applyTime);
 
