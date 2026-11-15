@@ -385,18 +385,23 @@ function palPattern(mid){   // the memory's 10 colours as horizontal bands acros
    pigment pools, grain scattered through the paint, and multiply blending, so overlaps go deep brown / plum.
    יפתח = the warm family (yellow → orange → red-orange), יעל = the cool family (lavender → purple → indigo); a memory of both gets both. */
 const WASH = {
-  dash: ['#f6e27a','#f7b35a','#f2843c','#d9552a','#9c2f1e'],   // יפתח — warm, light → dark
-  diag: ['#cbb8ec','#a58ade','#7f62cc','#5a40ad','#33236e'],   // יעל — cool, light → dark
+  dash: ['#f7e98a','#f9bf6b','#f4904a','#e5663a','#b8452e'],   // יפתח — warm, light → dark (yellow → orange → vermilion)
+  diag: ['#d6cbf3','#b3a2ea','#8c76dc','#6450c4','#3f2f8f'],   // יעל — cool, light → dark (lavender → violet → indigo)
 };
 const HEAT_R = 1900;   // big enough that neighbouring memories run into one continuous field, as in the reference   // outer wash radius in metres; the inner washes shrink toward the core
 function seeded(n){ let s = 0; for(const ch of n) s = (s*31 + ch.charCodeAt(0)) >>> 0; return ()=>{ s = (s*1664525 + 1013904223) >>> 0; return s/4294967296; }; }
 let grainTile = null;
-function grain(){
+function grain(){   // watercolour granulation: soft clumps where pigment settles in the paper, not pixel noise
   if(grainTile) return grainTile;
-  const g = document.createElement('canvas'); g.width = g.height = 160; const x = g.getContext('2d'), d = x.createImageData(160,160);
-  for(let i=0;i<d.data.length;i+=4){ const v = Math.random(); d.data[i]=d.data[i+1]=d.data[i+2]=0; d.data[i+3] = v<.55 ? 0 : Math.round((v-.55)*190); }
-  x.putImageData(d,0,0); return grainTile = g;
+  const n = 96, small = document.createElement('canvas'); small.width = small.height = n;
+  const sx = small.getContext('2d'), d = sx.createImageData(n,n);
+  for(let i=0;i<d.data.length;i+=4){ const v = Math.random(); d.data[i]=d.data[i+1]=d.data[i+2]=0; d.data[i+3] = v<.62 ? 0 : Math.round((v-.62)*120); }
+  sx.putImageData(d,0,0);
+  const g = document.createElement('canvas'); g.width = g.height = n*3; const gx = g.getContext('2d');
+  gx.imageSmoothingEnabled = true; gx.filter = 'blur(.6px)'; gx.drawImage(small, 0, 0, n*3, n*3);
+  return grainTile = g;
 }
+
 function washPath(ctx, cx, cy, r, rnd){   // a wobbly closed shape: a circle pushed in and out by 3 low-frequency waves
   const ph = [rnd()*6.3, rnd()*6.3, rnd()*6.3], amp = [.16+rnd()*.12, .07+rnd()*.06, .02+rnd()*.02], N = 72;
   const sx = .75 + rnd()*.7, rot = rnd()*Math.PI;   // stretched blots, not circles                                  // a little stretched and turned, like a brush wash
@@ -462,7 +467,7 @@ const Heat = L.Layer.extend({
     L.DomUtil.setPosition(c, m.containerPointToLayerPoint([0,0]));
     if(c.width !== size.x*dpr || c.height !== size.y*dpr){ c.width = size.x*dpr; c.height = size.y*dpr; c.style.width = size.x+'px'; c.style.height = size.y+'px'; }
     const ctx = c.getContext('2d'); ctx.setTransform(dpr,0,0,dpr,0,0); ctx.clearRect(0,0,size.x,size.y);
-    const HEAT_S = HEAT.raf ? 6 : 3, k3 = HEAT_S/3;          // coarser while animating (smooth frames), full detail once it settles
+    const HEAT_S = HEAT.raf ? 5 : 2, k3 = HEAT_S/3;          // coarser while animating (smooth frames), full detail once it settles
     const gw = Math.ceil(size.x/HEAT_S), gh = Math.ceil(size.y/HEAT_S);
     const F = this._f, L2 = this._l; F.width = L2.width = gw; F.height = L2.height = gh;
     const fx = F.getContext('2d', {willReadFrequently:true}), lx = L2.getContext('2d');
@@ -486,12 +491,12 @@ const Heat = L.Layer.extend({
       // 1. this memory's ink
       fx.globalCompositeOperation = 'source-over'; fx.clearRect(0,0,gw,gh); fx.globalCompositeOperation = 'lighter';
       const grow = .3 + .7*w;
-      fx.filter = `blur(${Math.max(1.2, span*.035)}px)`;
+      fx.filter = `blur(${Math.max(2, span*.06)}px)`;
       fx.beginPath();
       for(const r of rings){ r.forEach((p,k)=>{ const x=(pt.x+(p.x-pt.x)*grow)/HEAT_S, y=(pt.y+(p.y-pt.y)*grow)/HEAT_S; k?fx.lineTo(x,y):fx.moveTo(x,y); }); fx.closePath(); }
       fx.fillStyle = `rgba(255,255,255,${.30*w})`; fx.fill('evenodd');
       fx.filter = 'none';
-      const rc = Math.max(5, 1100/mpp/HEAT_S) * (.45 + .55*w), cx = pt.x/HEAT_S, cy = pt.y/HEAT_S;
+      const rc = Math.max(5, 950/mpp/HEAT_S) * (.45 + .55*w), cx = pt.x/HEAT_S, cy = pt.y/HEAT_S;
       const sx = .7 + rnd()*.6, rot = rnd()*Math.PI;
       fx.save(); fx.translate(cx,cy); fx.rotate(rot); fx.scale(sx, 1/sx);
       const gr = fx.createRadialGradient(0,0,0,0,0,rc);
@@ -500,25 +505,25 @@ const Heat = L.Layer.extend({
       const bw = gx1-gx0, bh = gy1-gy0;
       const field = fx.getImageData(gx0, gy0, bw, bh).data;
       // 2. organic edge: a gentle warp (fading near the core so it stays on the place) + a little grainy noise
-      const drift = HEAT.drift + rnd()*10, WARP = 8/k3, V = new Float32Array(bw*bh);
+      const drift = HEAT.drift + rnd()*10, WARP = 10/k3, V = new Float32Array(bw*bh);
       for(let yy=0, i=0; yy<bh; yy++) for(let xx=0; xx<bw; xx++, i++){
         const f0 = field[i*4+3]/255; if(f0 < .015){ V[i] = 0; continue; }
-        const X = xx+gx0, Y = yy+gy0, amp = WARP*2*(1 - Math.min(1, f0*1.8));
+        const X = xx+gx0, Y = yy+gy0, amp = WARP*2*(1 - .6*Math.min(1, f0*1.6));   // cores flow a little too, but stay on their spot
         const sxx = Math.min(bw-1, Math.max(0, Math.round(xx + (noise(X*k3/18 + drift, Y*k3/18) - .5)*amp)));
         const syy = Math.min(bh-1, Math.max(0, Math.round(yy + (noise(X*k3/18 + 9.7, Y*k3/18 - drift) - .5)*amp)));
         const f = field[(syy*bw + sxx)*4 + 3]/255;
         V[i] = f + (noise(X*k3/11 + drift, Y*k3/11) - .5)*.07 + (noise(X*k3/4, Y*k3/4 - drift)-.5)*.03;
       }
       // 3. four crisp washes, each with a pooled-pigment rim — the hand-made edge of the drawing
-      const ramp = WASH[fam], LEVELS = [.07, .2, .38, .62];
+      const ramp = WASH[fam], LEVELS = [.06, .2, .4, .66];
       lx.clearRect(0,0,gw,gh);
       LEVELS.forEach((lev, j)=>{
-        const img = lx.createImageData(bw, bh), d = img.data, [cr,cg,cb] = hexRGB(ramp[j+1 > 4 ? 4 : (j===0?0:j+1)]), eps = .012;
+        const img = lx.createImageData(bw, bh), d = img.data, [cr,cg,cb] = hexRGB(ramp[[0,1,3,4][j]]), eps = .028;
         for(let i=0; i<V.length; i++){
           const v = V[i]; if(v < lev - eps) continue;
           const inside = Math.min(1, (v - lev + eps)/(2*eps));                 // a crisp edge
-          const rim = v < lev + .045 ? 1 - (v - lev)/.045 : 0;                 // pigment pools just inside the edge
-          const o = i*4; d[o]=cr; d[o+1]=cg; d[o+2]=cb; d[o+3] = Math.round(255*Math.min(1, inside*(.24 + .34*Math.max(0, rim))));
+          const rim = v < lev + .03 ? 1 - Math.abs(v - lev)/.03 : 0;          // a thin, soft line of pooled pigment at the edge
+          const o = i*4; d[o]=cr; d[o+1]=cg; d[o+2]=cb; d[o+3] = Math.round(255*Math.min(1, inside*(.26 + .16*Math.max(0, rim))));
         }
         lx.putImageData(img, 0, 0);
         ctx.globalCompositeOperation = 'multiply'; ctx.globalAlpha = 1; ctx.imageSmoothingEnabled = true;
